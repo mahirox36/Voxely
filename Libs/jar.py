@@ -1,7 +1,6 @@
 import os
 import requests
 from rich import print
-import json
 
 class MinecraftServerDownloader:
     def __init__(self):

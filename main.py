@@ -3,7 +3,6 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from rich import print
-from pydantic import BaseModel
 from Libs.basemodels import CreateServerRequest, ServerNameRequest
 from Libs.servers import Server, status, Type, ExistingServer
 from typing import Dict
