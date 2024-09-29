@@ -8,3 +8,6 @@ class CreateServerRequest(BaseModel):
     maxRam: int = Field(default=1024, gt=0)
 class ServerNameRequest(BaseModel):
     server: str
+class AccountsInfo(BaseModel):
+    username: str
+    password: str

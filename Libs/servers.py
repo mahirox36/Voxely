@@ -21,6 +21,14 @@ class Type:
     PAPER= "paper"
     CUSTOM= "custom"
 
+def get_servers():
+    servers = []
+    for server in os.listdir("servers"):
+        with open(f"servers/{server}/server.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+        servers.append(data["name"])
+    return servers
+
 class Server:
     def __init__(self, name: str, type: Type = Type.PAPER, version: str = "1.21.1", minRam: int = 1024, maxRam: int = 1024):
         if os.path.exists(f"servers/{name}"):

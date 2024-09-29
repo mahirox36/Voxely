@@ -3,3 +3,5 @@ servers/
 
 __pycache__/
 tests/
+
+.secret*/
