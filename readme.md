@@ -1,4 +1,5 @@
-# MineGimmeThat
+# MineGimmeThat (Work in Progress)
+
 ### A Minecraft local Hosting server
 
 ## Introduction
@@ -16,7 +17,6 @@ This is a simple Minecraft server hosting script that allows you to host a Minec
 - Support for multiple server instances.
 - Installing Mods and Plugins easily.
 
-
 ## Requirements
 
 - Windows duh
@@ -24,9 +24,11 @@ This is a simple Minecraft server hosting script that allows you to host a Minec
 - Python 3 installed on your machine (if you want to run the script)
 
 ## Installation
+
 - Download the latest release from the releases page.
 - Install the program by running the installer.
 - Have fun!
 
 ## Usage
+
 When you run the program, it will automatically start the server. and you can access the web interface by going to `http://<Local Ip Of your PC>:8001` in your web browser. From there, you can start and stop the server, as well as view the server logs.
