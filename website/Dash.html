@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-        <link rel="stylesheet" href="/static/css/styles.css">
+        <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
         <meta charset="UTF-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,13 +10,14 @@
     </head>
     
     <body>
-        <script src="/static/scripts/getinfo.js"></script>
+        <script src="/static/scripts/getinfo.js?v={{time}}"></script>
+        <p class="footer">© 2024 MineGimmeThat</p>
         <div class="sidebar">
             <ul class="sidebar-nav">
                 <li><a href="http://localhost:8001/dashboard">Dashboard</a></li>
                 <li class="expandable-button">Servers
                     <div id="serversList" class="sub-buttons">
-                        <button class="sub-button"><i class="fas fa-star"></i> Create</button>
+                        <button class="sub-button"><a href="http://localhost:8001/create"><i class="fas fa-star"></i> Create</a></button>
                         
                     </div>
                 </li>
@@ -31,9 +32,9 @@
         </div>
         
 
-        <p class="footer">© 2024 MineGimmeThat</p>
+        
 
-        <script src="/static/scripts/function.js"></script>
+        <script src="/static/scripts/function.js?v={{time}}"></script>
     </body>
     
 </html>

@@ -2,13 +2,16 @@ import os
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 import uvicorn
-from rich import print
 from Libs.accounts import Accounts
 from Libs.basemodels import CreateServerRequest, ServerNameRequest, AccountsInfo
-from itsdangerous import URLSafeTimedSerializer, BadSignature
 from Libs.servers import Server, ExistingServer, get_servers
+from Libs.jar import MinecraftServerDownloader
+import time
 import json
+from rich import print
 from typing import Dict
 
 #TODO: Add a Server Status in the server page
@@ -26,8 +29,9 @@ from typing import Dict
 online_servers: Dict[str, ExistingServer] = {}
 accounts = Accounts()
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory="website"), name="static")
+web = Jinja2Templates(directory="website")
 
 if not os.path.exists(".secrets/config.json"):
     with open(".secrets/config.json", "w") as f:
@@ -45,9 +49,26 @@ with open(".secrets/config.json", "r") as f:
 
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 
+def sendServerName(server: str):
+    return server.replace("_.", " ")
+def receiveServerName(server: str):
+    return server.replace(" ", "_.")
+def addServerOnline(server):
+    return receiveServerName(server)
+def removeServerOnline(server):
+    return sendServerName(server)
+
+def render(name: str,request: Request, **kwargs) -> HTMLResponse:
+    kwargs.update({"time": time.time()})
+    return web.TemplateResponse(name, {"request": request, **kwargs})
+
 @app.get("/")
-def read_root():
-    return FileResponse("website/homepage.html")
+def read_root(request: Request):
+    return HTMLResponse(status_code=302, headers={"Location": "/dashboard"})
+
+@app.get("/homepage")
+def homepage(request: Request):   
+    return render("index.html", request)
 
 
 @app.post("/create")
@@ -56,23 +77,26 @@ def create(request: CreateServerRequest):
         server_type = request.type
     except KeyError:
         raise HTTPException(status_code=422, detail="Invalid server type")
-    
-    Server(request.server, server_type, request.version, maxRam=request.maxRam)
+    request.maxRam = int(request.maxRam) * 1024
+    Server(addServerOnline(request.server), server_type, request.version, maxRam=request.maxRam)
     return {"status": "created"}
 
 @app.post("/start")
 def start(request: ServerNameRequest):
     try:
-        online_servers.update({request.server: ExistingServer(request.server)})
+        server = ExistingServer(addServerOnline(request.server))
+        online_servers.update({request.server: server})
+        print(online_servers)
     except KeyError:
         raise HTTPException(status_code=404, detail="Server not found")
-    online_servers.get(request.server).start()
+    print("Starting server")
+    server.start()
     return {"status": "started"}
 
 @app.post("/stop")
 def stop(request: ServerNameRequest):
     try:
-        server = online_servers.get(request.server)
+        server = online_servers.get(removeServerOnline(request.server))
     except KeyError:
         raise HTTPException(status_code=404, detail="Server not found")
     server.stop()
@@ -82,7 +106,7 @@ def stop(request: ServerNameRequest):
 @app.post("/accept_eula")
 def accept_eula(request: ServerNameRequest):
     try:
-        ExistingServer(request.server).acceptEula()
+        ExistingServer(request.server.replace(" ","_.")).acceptEula()
     except KeyError:
         raise HTTPException(status_code=404, detail="Server not found")
     return {"status": "accepted"}
@@ -90,14 +114,24 @@ def accept_eula(request: ServerNameRequest):
 @app.post("/is_created")
 def is_created(request: ServerNameRequest):
     try:
-        ExistingServer(request.server)
+        ExistingServer(request.server.replace(" ","_."))
         return {"status": True}
     except FileNotFoundError:
         return {"status": False}
     
 @app.post("/servers")
 def servers():
-    return {"servers": get_servers()}
+    return {"servers": get_servers(True)}
+
+@app.post("/versions")
+def versions():
+    downloader =MinecraftServerDownloader()
+    versions = {
+        "Fabric"    : downloader.get_fabric_versions(),
+        "Paper"     : downloader.get_paper_versions(),
+        "Vanilla"   : downloader.get_vanilla_versions()
+    }
+    return versions
     
 # Post register and login routes here
 @app.post("/register")
@@ -127,28 +161,49 @@ def get_current_user(request: Request):
         return False
     return username
 @app.get("/login")
-def login_page(user: str = Depends(get_current_user)):
+def login_page(request: Request, user: str = Depends(get_current_user)):
     if user != False:
         return HTMLResponse(status_code=302, headers={"Location": "/dashboard"})
-    return FileResponse("website/login.html")
+    return render("login.html", request)
 
 @app.get("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response):
     response.delete_cookie("session_token")
     return HTMLResponse(status_code=302, headers={"Location": "/"})
 
 #Main Website like dashboard, servers, etc
 @app.get("/dashboard")
-def dashboard(user: str = Depends(get_current_user)):
-    if user is False:
+def dashboard(request: Request, user: str = Depends(get_current_user)):
+    if user == False:
         return HTMLResponse(status_code=302, headers={"Location": "/login"})
-    return FileResponse("website/dash.html")
+    return render("dash.html", request)
+
+@app.get("/create")
+def create_page(request: Request, user: str = Depends(get_current_user)):
+    if user == False:
+        return HTMLResponse(status_code=302, headers={"Location": "/login"})
+    
+    return render("create.html", request)
 
 @app.get("/servers/{server}")
-def server_page(server: str, user: str = Depends(get_current_user)):
-    if user is False:
+def server_page(request: Request, server: str, user: str = Depends(get_current_user)):
+    if user == False:
         return HTMLResponse(status_code=302, headers={"Location": "/login"})
-    return FileResponse("website/server.html")
+    if server not in get_servers():
+        return HTMLResponse(status_code=404)
+    serverMinecraft = ExistingServer(server)
+    data = serverMinecraft.data
+    data["name"] = sendServerName(data["name"])
+    return render("server.html", request, server=data)
+
+
+# Discord and Github Routes
+@app.get("/discord")
+def discord():
+    return HTMLResponse(status_code=302, headers={"Location": "https://discord.gg/YmDsbFHHtQ"})
+@app.get("/github")
+def github():
+    return HTMLResponse(status_code=302, headers={"Location": "https://github.com/mahirox36/MineGimmeThat"})
 
 if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8001)

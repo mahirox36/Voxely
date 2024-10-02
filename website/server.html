@@ -2,38 +2,31 @@
 <html lang="en">
     <head>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-        <link rel="stylesheet" href="/static/css/styles.css">
+        <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
         <meta charset="UTF-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Dashboard</title>
+        <h6 id="serverSelect" style="display: none;">{{server.name}}</h6>
     </head>
     
     <body>
-        <script src="/static/scripts/getinfo.js"></script>
+        <p class="footer">© 2024 MineGimmeThat</p>
         <div class="sidebar">
             <ul class="sidebar-nav">
-                <li><a href="http://localhost:8001/dashboard">Dashboard</a></li>
-                <li class="expandable-button">Servers
-                    <div id="serversList" class="sub-buttons">
-                        <button class="sub-button"><i class="fas fa-star"></i> Create</button>
-                        
-                    </div>
-                </li>
-                <li><a href="http://localhost:8001/discord">Discord</a></li>
-                <li><a href="http://localhost:8001/settings">Settings</a></li>
-                <li><a href="http://localhost:8001/logout">Logout</a></li>
+                <li><a href="http://localhost:8001/dashboard">Back</a></li>
+                <!-- Options Of the Server -->
             </ul>
         </div>
         <div class="main-content">
-            <h1 class="gradient-text">I think of you from time to time</h1>
-            <button class="create-pos">Hi Nigger</button>
+            <h2 class="gradient-text">{{server.type}}</h2>
+            <button id="startButton" class="create-pos">Start</button>
+            <button id="stopButton" class="create-pos">Stop</button>
+            <button id="acceptButton" class="create-pos">Accept Eula</button>
         </div>
-        
+    
 
-        <p class="footer">© 2024 MineGimmeThat</p>
-
-        <script src="/static/scripts/function.js"></script>
+        <script src="/static/scripts/script.js?v={{time}}"></script>
     </body>
     
 </html>

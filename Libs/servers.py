@@ -21,12 +21,13 @@ class Type:
     PAPER= "paper"
     CUSTOM= "custom"
 
-def get_servers():
+def get_servers(space: bool = False):
     servers = []
     for server in os.listdir("servers"):
         with open(f"servers/{server}/server.json", "r", encoding="utf-8") as f:
             data = json.load(f)
-        servers.append(data["name"])
+        if space: servers.append(data["name"].replace("_.", " "))
+        else: servers.append(data["name"])
     return servers
 
 class Server:
@@ -64,6 +65,7 @@ class Server:
             "maxRam"    : self.maxRam,
             "full_path" : self.full_path,
             "jar_full_path": self.jar_full_path}
+        self.data = data
         with open(f"{self.path}/server.json", "w", encoding="utf-8") as f:
             f.write(json.dumps(data))
         
@@ -208,3 +210,4 @@ class ExistingServer(Server):
         self.minRam = data["minRam"]
         self.maxRam = data["maxRam"]
         self.jar_full_path = os.path.join(self.full_path, os.path.basename(self.jar_path))
+        self.data = data

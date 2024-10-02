@@ -25,6 +25,7 @@ class MinecraftServerDownloader:
 
     def downloadVanilla(self, version: str):
         versions = self.get_vanilla_versions(True)
+        version = str(version)
         if version not in versions:
             print(f"Version {version} not found.")
             return False
@@ -62,6 +63,7 @@ class MinecraftServerDownloader:
         if response.status_code == 200:
             version_data = response.json()
             versions = version_data['versions']
+            versions.reverse()
             return versions
         else:
             print(f"Failed to fetch Paper versions. Status code: {response.status_code}")
@@ -69,6 +71,7 @@ class MinecraftServerDownloader:
     
     def downloadPaper(self, version: str):
         versions = self.get_paper_versions()
+        version = str(version)
         if version not in versions:
             print(f"Version {version} not found.")
             return False
@@ -106,6 +109,7 @@ class MinecraftServerDownloader:
                 versions = version_data  # The API already returns a list of versions
             else:
                 versions = [v for v in version_data if v.get('stable', False)]
+            versions = [v['version'] for v in versions]
             return versions
         else:
             print(f"Failed to fetch Fabric supported versions. Status code: {response.status_code}")
@@ -113,7 +117,8 @@ class MinecraftServerDownloader:
 
     def downloadFabric(self, version: str):
         versions = self.get_fabric_versions(True)
-        if version not in [v['version'] for v in versions]:
+        version = str(version)
+        if version not in versions:
             print(f"Version {version} not found.")
             return False
 

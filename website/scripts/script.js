@@ -1,4 +1,9 @@
-let title = document.getElementById('title');
+function getSelectedServer() {
+    const serverSelect = document.getElementById('serverSelect');
+    return serverSelect ? serverSelect.textContent : null;
+}
+
+const serverName = getSelectedServer()
 
 async function makeRequest(url, method, body) {
     try {
@@ -22,82 +27,59 @@ async function makeRequest(url, method, body) {
     }
 }
 
-function updateTitle(message) {
-    title.innerHTML = message;
-}
-
-document.getElementById('createButton').addEventListener('click', async function() {
-    const requestBody = {
-        server: "server1",
-        type: "paper",
-        version: "1.21.1",
-        maxRam: 8192,
-    };
-
-    console.log('Request Body:', requestBody);
-
-    try {
-        const data = await makeRequest('http://localhost:8001/create', 'POST', requestBody);
-        updateTitle("Server is created");
-    } catch (error) {
-        updateTitle("Failed to create server");
-    }
-});
 
 document.getElementById('startButton').addEventListener('click', async function() {
-    const requestBody = { server: "server1" };
+    const requestBody = { server: serverName };
 
     console.log('Request Body:', requestBody);
 
     try {
         const data = await makeRequest('http://localhost:8001/start', 'POST', requestBody);
-        updateTitle("Server is starting");
+        return true;
     } catch (error) {
-        updateTitle("Failed to start server");
+        return false;
     }
 });
 
 document.getElementById('stopButton').addEventListener('click', async function() {
-    const requestBody = { server: "server1" };
+    const requestBody = { server: serverName };
 
     console.log('Request Body:', requestBody);
 
     try {
         const data = await makeRequest('http://localhost:8001/stop', 'POST', requestBody);
-        updateTitle("Server is stopping");
+        return true;
     } catch (error) {
-        updateTitle("Failed to stop server");
+        return false;
     }
 });
 document.getElementById('acceptButton').addEventListener('click', async function() {
-    const requestBody = { server: "server1" };
+    const requestBody = { server: serverName };
 
     console.log('Request Body:', requestBody);
 
     try {
         const data = await makeRequest('http://localhost:8001/accept_eula', 'POST', requestBody);
-        updateTitle("accepting eula");
+        return true;
     } catch (error) {
-        updateTitle("Failed to accept eula");
+        return false;
     }
 });
 
 
 async function checkIfCreated() {
-    const requestBody = { server: "server1" };
+    const requestBody = { server: serverName };
 
     console.log('Request Body:', requestBody);
 
     try {
         const data = await makeRequest('http://localhost:8001/is_created', 'POST', requestBody);
         if (data.status === true) {
-            updateTitle("Server is created");
+            return true;
         } else {
-            updateTitle("Server is not created");
+            return false;
         }
     } catch (error) {
-        updateTitle("Failed to check server status");
+        return false;
     }
 }
-
-checkIfCreated();

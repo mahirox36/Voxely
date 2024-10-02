@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-        <link rel="stylesheet" href="/static/css/styles.css">
+        <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
         <meta charset="UTF-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,8 +14,8 @@
             <nav>
                 <ul>
                     <li><a href="#home">Home</a></li>
-                    <li><a href="#features">Discord</a></li>
-                    <li><a href="#about">Github</a></li>
+                    <li><a href="http://localhost:8001/discord">Discord</a></li>
+                    <li><a href="http://localhost:8001/github">Github</a></li>
                     <li><a href="http://localhost:8001/login"><button class="login-pos">Login</button></a></li>
                 </ul>
             </nav>
@@ -28,19 +28,24 @@
     
         <section id="features">
             <h2>Features</h2>
-            <p>Discover the amazing features of our Minecraft hosting service.</p>
-        </section>
-    
-        <section id="about">
-            <h2>About Us</h2>
-            <p>Learn more about our mission and team.</p>
+            <p>
+                We provide the best local hosting for your Minecraft server. Our features include:
+                <ul class="formattedUL">
+                    <li class="formattedLi">Plug and play.</li>
+                    <li class="formattedLi">Easy to use.</li>
+                    <li class="formattedLi">Installing Mods and Plugins easily.</li>
+                    <li class="formattedLi">View real-time server logs through the web interface.</li>
+                    <li class="formattedLi">Really Fast</li>
+                    <li class="formattedLi">And More!</li>
+                </ul>
+            </p>
         </section>
     
         <footer>
             <p>© 2024 MineGimmeThat</p>
         </footer>
 
-        <script src="static/scripts/function.js"></script>
+        <script src="static/scripts/function.js?v={{time}}"></script>
     </body>
     
 </html>

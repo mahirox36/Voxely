@@ -1,0 +1,38 @@
+{
+    "cSpell.words": [
+        "basemodels",
+        "itsdangerous"],
+    "todo-tree.tree.showCountsInTree": true,
+    "editor.tokenColorCustomizations": {
+    "textMateRules": [
+        {
+            "scope": "log.error",
+            "settings": {
+                "foreground": "#af1f1f",
+                "fontStyle": "bold"
+            }
+        },
+        {
+            "scope": "log.info",
+            "settings": {
+                "foreground": "#1E90FF",
+                "fontStyle": ""
+            }
+        },
+        {
+            "scope": "log.debug",
+            "settings": {
+                "foreground": "#6A5ACD",
+                "fontStyle": "bold"
+            }
+        },
+        {
+            "scope": "log.warning",
+            "settings": {
+                "foreground": "#f4ad42",
+                "fontStyle": "bold"
+            }
+        }
+        
+    ]}
+}

@@ -20,6 +20,10 @@ async function makeRequest(url, method, body) {
     }
 }
 
+function replaceAllSpaces(str) {
+    return str.replace(/ /g, '_.');
+}
+
 document.addEventListener('DOMContentLoaded', (event) => {
     let servers = [];
     let serversList = document.getElementById('serversList');
@@ -34,7 +38,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 let serverItem = document.createElement('button');
                 serverItem.classList.add('sub-button');
                 serverItem.onclick = function() {
-                    window.location.href = `http://localhost:8001/servers/${server}`;
+                    window.location.href = `http://localhost:8001/servers/${replaceAllSpaces(server)}`;
                 };
                 serverItem.textContent = `${server}`;
                 serversList.appendChild(serverItem);
@@ -47,4 +51,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
     // Call the async function to fetch server info
     fetchServerInfo();
+
+    // const buttons = document.querySelectorAll(".sub-buttons.show .sub-button");
+    
+    // buttons.forEach((button, index) => {
+    //     const delay = (index + 1) * 0.1;  // Each button has a 0.1s increment in delay
+    //     button.style.animationDelay = `${delay}s`;
+    // });
 });

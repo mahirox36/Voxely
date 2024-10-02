@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+        <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Dashboard</title>
+    </head>
+    
+    <body>
+        <script src="/static/scripts/getinfo.js?v={{time}}"></script>
+        <p class="footer">© 2024 MineGimmeThat</p>
+        <div class="sidebar">
+            <ul class="sidebar-nav">
+                <li><a href="http://localhost:8001/dashboard">Dashboard</a></li>
+                <li class="expandable-button">Servers
+                    <div id="serversList" class="sub-buttons">
+                        <button class="sub-button"><i class="fas fa-star"></i> Create</button>
+                        
+                    </div>
+                </li>
+                <li><a href="http://localhost:8001/discord">Discord</a></li>
+                <li><a href="http://localhost:8001/settings">Settings</a></li>
+                <li><a href="http://localhost:8001/logout">Logout</a></li>
+            </ul>
+        </div>
+        <div class="main-content">
+            <header>
+                <h1 class="gradient-text">Create New Server</h1>
+            </header>
+            <form class="create-server-form" id="createServerForm">
+                <div class="form-group">
+                    <label for="serverName">Server Name <span class="required">*</span></label>
+                    <input type="text" name="Name of the Server" id="serverName" placeholder="Enter server name" required>
+                </div>
+                <div class="form-group">
+                    <label for="serverType">Server Type <span class="required">*</span></label>
+                    <select name="Server Type" id="serverType" required>
+                        <option value="" selected disabled>Select Server Type</option>
+                    </select>
+                </div>
+                <div class="form-group" id="versionGroup">
+                    <label for="serverVersion">Server Version <span class="required">*</span></label>
+                    <select name="Server Version" id="serverVersion" required>
+                        <option value="" selected disabled>Select Server Version</option>
+                    </select>
+                </div>
+                <div class="form-group" id="customJarGroup" style="display: none;">
+                    <label for="customJarInput">Custom JAR Name <span class="required">*</span></label>
+                    <input type="text" name="Custom JAR Name" id="customJarInput" placeholder="Enter custom JAR name">
+                </div>
+
+                <div class="form-group horizontal-options-container">
+                    <div>
+                        <label for="port">Server Port<span class="required">*</span></label>
+                        <input type="number" name="Port" id="port" placeholder="Enter port" required min="1" max="65535" value="25565">
+                    </div>
+                    <div>
+                        <label for="minRam">Min Ram (GB)<span class="required">*</span></label>
+                        <input type="number" name="Min Ram" id="minRam" placeholder="Enter min RAM" required min="1" max="64"value="1">
+                    </div>
+                    <div>
+                        <label for="maxRam">Max Ram (GB) <span class="required">*</span></label>
+                        <input type="number" name="Max Ram" id="maxRam" placeholder="Enter max RAM" required min="1" max="64" value="4">
+                    </div>
+                    <div>
+                        <label for="maxPlayers">Max Players <span class="required">*</span></label>
+                        <input type="number" name="Max Players" id="maxPlayers" placeholder="Enter max players" required min="1" value="20">
+                    </div>
+                </div>
+                <button type="submit" id="createButton" class="create-button">Create Server</button>
+            </form>
+        </div>
+        
+
+        
+
+        <script src="/static/scripts/createServer.js?v={{time}}"></script>
+        <script src="/static/scripts/function.js?v={{time}}"></script>
+    </body>
+    
+</html>
