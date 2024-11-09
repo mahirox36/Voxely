@@ -1,0 +1,144 @@
+/* Dashboard Layout Styles */
+
+/* Main container for dashboard sections */
+.dashboard-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+/* Common styles for each dashboard section */
+.dashboard-section {
+    background-color: var(--bg-secondary);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* User profile styles */
+.user-profile {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-secondary);
+    padding: 10px;
+    border-radius: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* User avatar styles */
+.user-profile img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+/* Welcome message styles */
+.user-profile h2 {
+    font-size: 0.9em;
+    margin: 0;
+}
+
+/* Notifications section styles */
+.notifications {
+    font-size: 0.9em;
+}
+
+.notifications h3 {
+    font-size: 1.2em;
+    margin-bottom: 10px;
+}
+
+.notifications ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.notifications li {
+    margin-bottom: 8px;
+    padding: 8px;
+    background-color: var(--bg-primary);
+    border-radius: 5px;
+}
+
+/* Statistics section styles */
+.statistics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+/* Individual statistic card styles */
+.stat-card {
+    background-color: var(--bg-primary);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+.stat-card.longer {
+    grid-column: span 2; /* Make the card span across two columns */
+    width: auto; /* Ensure the width is automatically adjusted */
+}
+
+
+.stat-card h4 {
+    font-size: 0.9em;
+    margin-bottom: 5px;
+}
+
+/* Emphasize the statistic number */
+.stat-card p {
+    font-size: 2em;
+    margin: 0;
+    font-weight: bold;
+}
+
+/* Quick actions section styles */
+.quick-actions {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+}
+
+.quick-actions button {
+    margin: 10px;
+}
+
+/* Responsive design adjustments */
+@media (max-width: 768px) {
+    .dashboard-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .user-profile {
+        position: static;
+        margin-bottom: 20px;
+    }
+}
+
+/* Animation for dashboard sections */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Apply animation to dashboard sections */
+.dashboard-section {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Stagger the animation for each section */
+.dashboard-section:nth-child(1) { animation-delay: 0.1s; }
+.dashboard-section:nth-child(2) { animation-delay: 0.2s; }
+.dashboard-section:nth-child(3) { animation-delay: 0.3s; }
+.dashboard-section:nth-child(4) { animation-delay: 0.4s; }

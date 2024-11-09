@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
+    <link rel="stylesheet" href="/static/css/placement.css?v={{time}}">
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Dashboard</title>
+</head>
+<body>
+    <p class="footer">© 2024 MineGimmeThat</p>
+    <div class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="http://localhost:8001/dashboard">Dashboard</a></li>
+            <li><a href="#" data-tab="files"><i class="fas fa-folder"></i> Files</a></li>
+            <li><a href="#" data-tab="players"><i class="fas fa-users"></i> Players</a></li>
+            <li><a href="#" data-tab="logs"><i class="fas fa-list"></i> Logs</a></li>
+            <li><a href="#" data-tab="backups"><i class="fas fa-save"></i> Backups</a></li>
+            <li><a href="#" data-tab="plugins"><i class="fas fa-puzzle-piece"></i> Plugins</a></li>
+            <li><a href="#" data-tab="settings"><i class="fas fa-cog"></i> Settings</a></li>
+        </ul>
+    </div>
+    <div class="main-content">
+        <header>
+            <h1 class="gradient-text">Server Dashboard: <span id="serverName">{{server.name}}</span></h1>
+        </header>
+        <div class="dashboard-container">
+            <!-- <div class="server-info">
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span id="serverStatus" class="status-indicator online">Online</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Players:</span>
+                    <span id="playerCount">0/20</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Version:</span>
+                    <span id="serverVersion">1.19.2</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">IP:</span>
+                    <span id="serverIP">play.example.com</span>
+                </div>
+            </div> -->
+            <div class="dashboard-section statistics">
+                <div class="stat-card">
+                    <h4>Status</h4>
+                    {% if server.status == "online": %}
+                        <p class="stat-value"><span id="serverStatus" class="status-indicator online">Online</span></p>
+                    {% elif server.status == "offline": %}
+                        <p class="stat-value"><span id="serverStatus" class="status-indicator offline">Offline</span></p>
+                    {% elif server.status == "starting" or server.status == "stopping":%}
+                        <p class="stat-value"><span id="serverStatus" class="status-indicator busy">{{server.status.capitalize()}}</span></p>
+                    {% endif %}
+                    
+
+                </div>
+                <div class="stat-card">
+                    <h4>Players</h4>
+                    <p class="stat-value"><span id="playerCount">0/{{server.players_limit}}</span></p>
+                </div>
+                <div class="stat-card">
+                    <h4>Version</h4>
+                    <p class="stat-value"><span id="serverVersion">{{server.version}}</span></p>
+                </div>
+                <div class="stat-card dashboardServer longer">
+                    <h4>IPs</h4>
+                    <p class="stat-value"><span id="serverIP1">{{server.public}}</span></p>
+                    <p class="stat-value"><span id="serverIP2">{{server.private}}</span></p>
+                </div>
+                <div class="stat-card quick-actions">
+                    <h4>Quick Actions</h4>
+                    <button id="start-server" class="action-button button-success">Start</button>
+                    <button id="stop-server" class="action-button button-danger">Stop</button>
+                    <button id="accept-eula" class="action-button button-info">Eula</button>
+                </div>
+            </div>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <h3>Server Console</h3>
+                </div>
+                <div id="terminal-output" class="terminal-output">
+                    <!-- Terminal output will be populated here -->
+                </div>
+                <div class="terminal-input">
+                    <input type="text" id="command-input" placeholder="Enter command...">
+                    <button id="send-command">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="tab-content" class="tab-content">
+        <!-- Tab content will be loaded here -->
+    </div>
+    <script src="/static/scripts/serverDashboard.js?v={{time}}"></script>
+</body>
+</html>

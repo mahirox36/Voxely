@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
             // Add server buttons after fetching server info
             for (const server of servers) {
-                let serverItem = document.createElement('button');
+                let serverItem = document.createElement('a');
                 serverItem.classList.add('sub-button');
                 serverItem.onclick = function() {
                     window.location.href = `http://localhost:8001/servers/${replaceAllSpaces(server)}`;

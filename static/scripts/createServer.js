@@ -92,12 +92,21 @@ async function createServer(event) {
     if (form.checkValidity()) {
         const serverName = document.getElementById('serverName').value;
         const serverType = document.getElementById('serverType').value;
+        const serverVersion = document.getElementById('serverVersion').value;
+        const customJarInput = document.getElementById('customJarInput').value;
+        const Port = document.getElementById('port').value;
+        const minRam = document.getElementById('minRam').value;
         const maxRam = document.getElementById('maxRam').value;
+        const maxPlayers = document.getElementById('maxPlayers').value;
 
         let requestBody = {
-            server: serverName,
+            name: serverName,
             type: serverType,
-            maxRam: parseInt(maxRam)
+            version: serverVersion,
+            port: Port,
+            minRam: minRam,
+            maxRam: maxRam,
+            maxPlayers: maxPlayers
         };
 
         if (serverType === 'custom') {
