@@ -1,6 +1,9 @@
-import datetime
+from datetime import datetime
 import os
+import re
 import threading
+from typing import List
+from mcrcon import MCRcon
 import time
 import psutil
 from rich import print
@@ -9,6 +12,7 @@ import subprocess
 import socket
 from .jar import MinecraftServerDownloader
 import asyncio
+from .serverProperties import ServerProperties
 
 loop = asyncio.get_event_loop()
 
@@ -36,6 +40,8 @@ def get_servers(space: bool = False):
             servers.append(data["name"])
     return servers
 
+
+
 class Server:
     def __init__(self,
                  name: str,
@@ -48,6 +54,8 @@ class Server:
         self.name = name
         self.path = f"servers/{name}"
         self.full_path = os.path.join(os.getcwd(), self.path)
+        self.Properties = ServerProperties(os.path.join(self.full_path, "server.properties"))
+        self.started_at = None
 
         if os.path.exists(self.path):
             self._load_existing_server()
@@ -59,17 +67,26 @@ class Server:
             self.data = json.load(f)
         
         for key, value in self.data.items():
+            if key in ["players"]: continue
             setattr(self, key, value)
+        if "started_at" in self.data:
+            self.started_at = datetime.fromisoformat(self.data["started_at"]) if self.data["started_at"] != None else None
         
+        if self.is_server_online == False:
+            self.data["status"] = ServerStatus.OFFLINE
+            self.logs = []
+            self.started_at = None
+            self._save_state()
         self.status = ServerStatus.OFFLINE
-        self.created_at = datetime.datetime.strptime(self.created_at, "%Y-%m-%d %H:%M:%S")
+    @property
+    def players(self) -> List[str]:
+        return self.get_players()
 
     def _create_new_server(self, type, version, min_ram, max_ram, port, players_limit):
-        self.created_at = datetime.datetime.now()
+        self.created_at = datetime.now()
         self.status = ServerStatus.OFFLINE
         self.type = type
         self.version = version
-        self.players = []
         self.players_limit = players_limit
         self.logs = []
         self.min_ram = min_ram
@@ -83,24 +100,34 @@ class Server:
 
         self.data = {
             "name": self.name,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "created_at": self.created_at.isoformat(),
+            "started_at": self.started_at,
             "status": self.status,
             "type": self.type,
             "version": self.version,
-            "players": self.players,
             "players_limit": self.players_limit,
-            "logs": self.logs,
             "path": self.path,
             "jar_path": self.jar_path,
             "min_ram": self.min_ram,
             "max_ram": self.max_ram,
             "full_path": self.full_path,
             "jar_full_path": self.jar_full_path,
-            "port": self.port
+            "port": self.port,
+            "players": self.players,
+            "logs": self.logs,
         }
 
         self._save_server_data()
-
+        with open(os.path.join(self.full_path, "server.properties"),"w") as f:
+            f.write(f"""motd={self.name}
+max-players={players_limit}
+server-port={port}
+enable-rcon=true
+rcon.password=sdu923rf873bdf4iu53aw2
+                    """)
+    @property
+    def lengthPlayers(self):
+        return len(self.players)
     def _download_jar(self, type: ServerType, version: str):
         downloader = MinecraftServerDownloader()
         if type == ServerType.VANILLA:
@@ -115,27 +142,84 @@ class Server:
         new_path = os.path.join(self.path, os.path.basename(path))
         os.rename(path, new_path)
         return new_path
+    @property
+    def is_server_online(self):
+        """Check if the server is currently online by attempting to connect to the specified port."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)  # Set timeout to avoid long waits
+            try:
+                result = sock.connect_ex(('localhost', self.port))
+                if result == 0:
+                    self.status = ServerStatus.ONLINE
+                    return True
+                else:
+                    self.status = ServerStatus.OFFLINE
+                    return False
+            except socket.error as e:
+                self.status = ServerStatus.OFFLINE
+                self.started_at = None
+                return False
 
     def _save_server_data(self):
         with open(f"{self.path}/server.json", "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=4)
-    async def get_metrics(self):
+    @property
+    def uptime(self):
+        if self.started_at:
+            uptime_seconds = (datetime.now() - self.started_at).total_seconds()
+            
+            # Calculate days, hours, minutes, and seconds
+            days, remainder = divmod(uptime_seconds, 86400)
+            hours, remainder = divmod(remainder, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            return f"{int(days)}d {int(hours)}h {int(minutes)}m {int(seconds)}s"
+        else:
+            return "Offline"
+    async def get_metrics(self,edited: bool = False):
         usage = await self.measure_process_usage()
+        print(self.lengthPlayers)
         return {
             "cpu_usage": usage['cpu'],
             "memory_usage": usage['memory'],
-            "player_count": len(self.players),
-            "uptime": (datetime.datetime.now() - self.created_at).total_seconds()
+            "player_count": self.lengthPlayers,
+            "uptime": self.uptime
+        } if edited == False else {
+            "cpu_usage": f"%{usage['cpu']:.2f}",
+            "memory_usage": f"%{usage['memory']:.2f}",
+            "player_count": f"{self.lengthPlayers}/{self.players_limit}",
+            "uptime": self.uptime
         }
-
-    def accept_eula(self):
-        with open(f"{self.path}/eula.txt", "w", encoding="utf-8") as f:
-            f.write("eula=true")
     def _save_state(self):
         self.data["status"] = self.status
         self.data["players"] = self.players
         self.data["logs"] = self.logs
+        self.data["started_at"] = self.started_at.isoformat() if self.started_at != None else None
         self._save_server_data()
+
+    def get_players(self):
+        if self.is_server_online:
+            try:
+                with MCRcon(self.ip["private"].split(":")[0], "sdu923rf873bdf4iu53aw2", port=25575) as mcr:
+                    response = mcr.command("list")
+                    # Parse the response to extract player count and names
+                    if response:
+                        match = re.search(r"There are (\d+) of a max of \d+ players online: (.+)", response)
+                        if match:
+                            player_count = int(match.group(1))
+                            player_names = match.group(2).split(", ")
+                        else:
+                            player_count = 0
+                            player_names = []
+                return player_names
+            except Exception as e:
+                print(f"Error using RCON: {e}")
+        else:
+            return []
+    
+    def accept_eula(self):
+        with open(f"{self.path}/eula.txt", "w", encoding="utf-8") as f:
+            f.write("eula=true")
 
     def start(self):
         self.status = ServerStatus.STARTING
@@ -169,9 +253,10 @@ class Server:
                 self.output_callback(line),
                 loop
             )
-    
-            if "Done" in line:
+            
+            if "Done" in line:  # Detect when server is fully online
                 self.status = ServerStatus.ONLINE
+                self.started_at = datetime.now()  # Set start time for uptime
                 self._save_state()
     
         self.process.stdout.close()
@@ -206,16 +291,15 @@ class Server:
         except psutil.NoSuchProcess:
             return {"cpu": 0, "memory": 0}
         except Exception as e:
-            print(f"Error measuring process usage: {e}")
             return {"cpu": 0, "memory": 0}
 
     async def get_usage(self):
         usage = await self.measure_process_usage()
-        print(usage)
         return f"CPU: {usage['cpu']:.1f}%, Memory: {usage['memory']:.1f} MB"
     
     def stop(self):
         if self.status not in [ServerStatus.OFFLINE, ServerStatus.STOPPING]:
+            self.started_at = None
             self.status = ServerStatus.STOPPING
             self._save_state()
             self.send_command("stop")

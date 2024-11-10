@@ -1,37 +1,69 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
-    <link rel="stylesheet" href="/static/css/placement.css?v={{time}}">
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v={{time}}">
 </head>
 <body>
-    <script src="/static/scripts/getinfo.js?v={{time}}"></script>
-    <p class="footer">© 2024 MineGimmeThat</p>
+    <!-- Sidebar -->
     <div class="sidebar">
         <div class="logo">
             <h2 class="gradient-text">MineGimmeThat</h2>
         </div>
         <ul class="sidebar-nav">
-            <li><a href="{{ url_for('dashboard') }}"><span>Dashboard</span></a></li>
+            <li><a href="{{ url_for('dashboard') }}"><i class="fas fa-home"></i><span>Dashboard</span></a></li>
             <li class="expandable-button">
-                <a href="#"><span>Servers</span></a>
+                <a href="#"><i class="fas fa-server"></i><span>Servers</span></a>
                 <div class="sub-buttons" id="serversList">
                     <a href="{{ url_for('create') }}" class="sub-button">Create</a>
                 </div>
             </li>
-            <li><a href="{{ url_for('discord') }}"><span>Discord</span></a></li>
-            <li><a href="{{ url_for('settings') }}"><span>Settings</span></a></li>
-            <li><a href="{{ url_for('logout') }}"><span>Logout</span></a></li>
+            <li><a href="{{ url_for('discord') }}"><i class="fab fa-discord"></i><span>Discord</span></a></li>
+            <li><a href="{{ url_for('settings') }}"><i class="fas fa-cog"></i><span>Settings</span></a></li>
+            <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i><span>Logout</span></a></li>
         </ul>
     </div>
 
+    <!-- Main Content -->
     <div class="main-content">
+        <!-- User Profile -->
+        <div class="user-profile">
+            <img src="/static/images/user-avatar.png" alt="User Avatar" class="user-avatar">
+            <h2>Welcome, <span class="gradient-text">{{ username }}</span></h2>
+        </div>
+
+        <!-- Dashboard Container -->
         <div class="dashboard-container">
+            <!-- Statistics Section -->
+            <div class="dashboard-section statistics">
+                <div class="stat-card">
+                    <h4>Active Players</h4>
+                    <div class="stat-value">{{ active_users }}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>New Signups</h4>
+                    <div class="stat-value">{{ new_signups }}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Total Servers</h4>
+                    <div class="stat-value">{{ total_servers }}</div>
+                </div>
+                <div class="stat-card longer">
+                    <h4>System Status</h4>
+                    <div class="server-info">
+                        <div class="info-item">
+                            <span class="info-label">Java</span>
+                            <span class="status-indicator online">Installed</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications Section -->
             <div class="dashboard-section notifications">
                 <h3 class="gradient-text">Notifications</h3>
                 <ul class="formattedUl">
@@ -41,51 +73,45 @@
                 </ul>
             </div>
 
-            <div class="dashboard-section statistics">
-                <div class="stat-card">
-                    <h4>Players</h4>
-                    <p class="stat-value">{{ active_users }}</p>
-                </div>
-                <div class="stat-card">
-                    <h4>New Signups</h4>
-                    <p class="stat-value">{{ new_signups }}</p>
-                </div>
-                <div class="stat-card">
-                    <h4>Total Servers</h4>
-                    <p class="stat-value">{{ total_servers }}</p>
-                </div>
-            </div>
-
+            <!-- Server List Section -->
             <div class="dashboard-section server-list">
                 <h3 class="gradient-text">Your Servers</h3>
                 <ul class="formattedUl">
                     {% for server in servers %}
                         <li class="formattedLi">
-                            {{ server.name }} 
-                            <span class="status {{ 'online' if server.status == 'online' else 'offline' }}">
-                                {{ server.status.capitalize() }}
+                            {{ server.name }}
+                            <span class="status-indicator {{ server.status }}">
+                                {{ server.status }}
                             </span>
                         </li>
                     {% endfor %}
                 </ul>
             </div>
 
-            <div class="dashboard-section quick-actions">
-                <button onclick="location.href='{{ url_for('create') }}'">New Server</button>
-                <button class="button-info" onclick="location.href='{{ url_for('settings') }}'">Settings</button>
-                <button class="button-success" onclick="location.href='#'">Analytics</button>
-                {% if username == "admin": %}
-                    <button class="button-danger" onclick="location.href='#'">Admin Panel</button>
-                {% endif %}
+            <!-- Quick Actions Section -->
+            <div class="dashboard-section">
+                <h3 class="gradient-text">Quick Actions</h3>
+                <div class="quick-actions">
+                    <button onclick="location.href='{{ url_for('create') }}'">New Server</button>
+                    <button class="button-info" onclick="location.href='{{ url_for('settings') }}'">Settings</button>
+                    <button class="button-success" onclick="location.href='#'">Analytics</button>
+                    {% if username == "admin" %}
+                        <button class="button-danger" onclick="location.href='#'">Admin Panel</button>
+                    {% endif %}
+                </div>
             </div>
-        </div>
 
-        <div class="user-profile">
-            <img src="/static/images/user-avatar.png" alt="User Avatar" class="user-avatar">
-            <h2>Welcome, <span class="gradient-text">{{ username }}</span></h2>
+
         </div>
     </div>
 
+    <!-- Footer -->
+    <footer>
+        <p>© 2024 MineGimmeThat</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="/static/scripts/getinfo.js?v={{time}}"></script>
     <script src="/static/scripts/function.js?v={{time}}"></script>
 </body>
 </html>

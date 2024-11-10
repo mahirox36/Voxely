@@ -87,6 +87,20 @@ class MinecraftWebSocket {
         }
     }
 }
+
+function updateMetrics(Metrics){
+    const uptime = document.getElementById('uptime');
+    const cpu = document.getElementById('cpu');
+    const ram = document.getElementById('ram');
+    const playerCounter = document.getElementById('playerCounter');
+
+
+    uptime.textContent = Metrics.uptime;
+    cpu.textContent = Metrics.cpu_usage;
+    ram.textContent = Metrics.memory_usage;
+    playerCounter.textContent = Metrics.player_count;
+}
+
 // Server API helper class
 class ServerAPI {
     static async makeRequest(url, method, body) {
@@ -206,7 +220,8 @@ class ServerControls {
                 } catch (error) {
                     appendToTerminal('Error accepting EULA: ' + error.message);
                 } finally {
-                    eulaButton.disabled = false;
+                    eulaButton.disabled = true;
+                    
                 }
             });
         }
@@ -216,14 +231,13 @@ class ServerControls {
         const startButton = document.getElementById('start-server');
         const stopButton = document.getElementById('stop-server');
         const eulaButton = document.getElementById('accept-eula');
-
         if (startButton && stopButton) {
             switch (status.toLowerCase()) {
-                case 'running':
+                case 'online':
                     startButton.disabled = true;
                     stopButton.disabled = false;
                     break;
-                case 'stopped':
+                case 'offline':
                     startButton.disabled = false;
                     stopButton.disabled = true;
                     break;
@@ -252,7 +266,7 @@ function appendToTerminal(message) {
 function updateServerStatus(status) {
     const serverStatus = document.getElementById('serverStatus');
     console.log(status)
-    serverStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);;
+    serverStatus.textContent = status;
     if (status === 'starting' || status === 'stopping') {
         status = 'busy';
     }

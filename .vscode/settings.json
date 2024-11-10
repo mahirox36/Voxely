@@ -1,7 +1,11 @@
 {
     "cSpell.words": [
         "basemodels",
-        "itsdangerous"],
+        "gamemode",
+        "itsdangerous",
+        "npcs",
+        "rcon"
+    ],
     "todo-tree.tree.showCountsInTree": true,
     "editor.tokenColorCustomizations": {
     "textMateRules": [

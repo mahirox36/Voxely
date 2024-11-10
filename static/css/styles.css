@@ -16,6 +16,11 @@
     --text-color: #ffffff;
     --transition-speed: 0.3s;
 }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
 
 /* Global Styles */
 body {
@@ -25,8 +30,9 @@ body {
     font-family: 'Arial', sans-serif;
     margin: 0;
     padding: 0;
-    transition: background-color var(--transition-speed) ease;
-    
+    height: 100vh; /* Use viewport height instead of min-height */
+    overflow: hidden; /* Prevent body scroll */
+    position: relative;
 }
 
 a {
@@ -120,6 +126,31 @@ button:active {
 
 .button-danger {
     background-image: linear-gradient(135deg, #ff1313, #fe7b57);
+}
+
+/* Specific darkened colors for disabled states of each button */
+.button-secondary:disabled {
+    background-image: linear-gradient(135deg, #d3d3d3, #c7c7c7);
+}
+
+.button-success:disabled {
+    background-image: linear-gradient(135deg, #a0d3c8, #8fa6a0); /* Muted green-blue */
+}
+
+.button-warning:disabled {
+    background-image: linear-gradient(135deg, #e5e5e5, #d2d2d2); /* Muted yellow-orange */
+}
+
+.button-info:disabled {
+    background-image: linear-gradient(135deg, #a7c6d8, #8faebf); /* Muted blue */
+}
+
+.button-danger:disabled {
+    background-image: linear-gradient(135deg, #ff8787, #e5a1a1); /* Muted red */
+}
+
+button:disabled{
+    cursor: not-allowed;
 }
 
 .toggle-button {
@@ -260,93 +291,86 @@ a, button, input, textarea {
     background-color: var(--sidebar-bg);
     padding: 20px 0;
     transition: width var(--transition-speed);
-        }
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+    z-index: 100;
+}
 
-        .sidebar-nav {
-            list-style-type: none;
-            padding: 0;
-        }
-
-        .sidebar-nav li {
-            padding: 10px 20px;
-            transition: all var(--transition-speed);
-        }
-
-        .sidebar-nav li a {
-            color: var(--text-color);
-            text-decoration: none;
-            display: block;
-            transition: all var(--transition-speed);
-        }
-
-        .sidebar-nav li:hover {
-            background-color: var(--sidebar-hover);
-        }
-
-        .expandable-button {
-            cursor: pointer;
-            position: relative;
-        }
-
-        .expandable-button::after {
-            content: '\25BC';
-            position: absolute;
-            right: 20px;
-            top: 11px;
-            transition: transform var(--transition-speed);
-        }
-
-        .expandable-button.active::after {
-            transform: rotate(-180deg);
-        }
-
-        .sub-buttons {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height var(--transition-speed) ease-out;
-        }
-
-        .sub-buttons.show {
-            max-height: 300px; /* Adjust based on your content */
-        }
-
-        .sub-button {
-            padding: 10px;
-            margin: 5px 0;
-            background-color: var(--accent-color);
-            color: var(--text-color);
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all var(--transition-speed);
-            width: 100%;
-            text-align: left;
-        }
-
-        .sub-button:hover {
-            background-color: #2980b9;
-            transform: translateX(5px);
-        }
-
-        /* Animation for sub-buttons */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .sub-buttons.show .sub-button {
-            animation: fadeIn 0.5s ease-out forwards;
-        }
-
-        /* .sub-buttons.show .sub-button:nth-child(1) { animation-delay: 0.1s; }
-        .sub-buttons.show .sub-button:nth-child(2) { animation-delay: 0.2s; }
-        .sub-buttons.show .sub-button:nth-child(3) { animation-delay: 0.3s; } */
+.sidebar-nav {
+    list-style-type: none;
+    padding: 0;
+}
+.sidebar-nav li {
+    padding: 10px 20px;
+    transition: all var(--transition-speed);
+}
+.sidebar-nav li a {
+    color: var(--text-color);
+    text-decoration: none;
+    display: block;
+    transition: all var(--transition-speed);
+}
+.sidebar-nav li:hover {
+    background-color: var(--sidebar-hover);
+}
+.expandable-button {
+    cursor: pointer;
+    position: relative;
+}
+.expandable-button::after {
+    content: '\25BC';
+    position: absolute;
+    right: 20px;
+    top: 11px;
+    transition: transform var(--transition-speed);
+}
+.expandable-button.active::after {
+    transform: rotate(-180deg);
+}
+.sub-buttons {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--transition-speed) ease-out;
+}
+.sub-buttons.show {
+    max-height: 300px; /* Adjust based on your content */
+}
+.sub-button {
+    padding: 10px;
+    margin: 5px 0;
+    background-color: var(--accent-color);
+    color: var(--text-color);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+    width: 100%;
+    text-align: left;
+}
+.sub-button:hover {
+    background-color: #2980b9;
+    transform: translateX(5px);
+}
+/* Animation for sub-buttons */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.sub-buttons.show .sub-button {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+/* .sub-buttons.show .sub-button:nth-child(1) { animation-delay: 0.1s; }
+.sub-buttons.show .sub-button:nth-child(2) { animation-delay: 0.2s; }
+.sub-buttons.show .sub-button:nth-child(3) { animation-delay: 0.3s; } */
 /* Main content adjustment */
 .main-content {
-    flex-grow: 1;
+    flex: 1;
+    margin-left: 250px; /* Match sidebar width */
     padding: 20px;
-    overflow-y: auto;
-    transition: margin-left var(--transition-speed);
+    padding-bottom: 60px; /* Space for footer */
+    min-height: calc(100vh - 60px); /* Subtract footer height */
 }
 
 @media screen and (max-width: 768px) {
@@ -423,14 +447,18 @@ section {
     text-align: center;
 }
 
+/* Fix footer styles */
 footer {
-    background-color: #1f1f1f;
-    color: white;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
     text-align: center;
     padding: 1rem 0;
-    position: absolute;
-    width: 100%;
+    position: fixed;
+    left: 0;
     bottom: 0;
+    width: 100%;
+    height: 60px; /* Fixed height for footer */
+    z-index: 99;
 }
 
 .formattedUl {
@@ -586,6 +614,9 @@ footer {
     .main-content {
         margin-left: 70px;
     }
+    .sidebar-nav li a span {
+        display: none;
+    }
 
     .create-server-form {
         padding: 20px;
@@ -730,13 +761,30 @@ input:focus {
     }
 }
 
-/* Server Dashboard Styles */
-
+/* Dashboard Container Layout */
 .dashboard-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: 2fr 3fr; /* statistics take 2/5, terminal takes 3/5 */
+    grid-template-rows: auto 1fr auto;
     gap: 20px;
+    padding: 20px;
+    padding-bottom: 80px; /* Increased padding to account for footer */
+    height: calc(100vh - 100px); /* Adjust for header/footer */
 }
+
+.dashboard-section.statistics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    align-content: start;
+}
+
+/* Make statistics section stick to left side */
+.dashboard-section.statistics:first-child {
+    grid-column: 1;
+    grid-row: 1;
+}
+
 .dashboard-section {
     background-color: var(--bg-secondary);
     border-radius: 10px;
@@ -765,9 +813,14 @@ input:focus {
 }
 
 .status-indicator {
-    padding: 5px 10px;
-    border-radius: 15px;
-    font-weight: bold;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    color: var(--text-color);
 }
 
 .stat-value {
@@ -789,48 +842,63 @@ input:focus {
 }
 .online {
     background: linear-gradient(135deg, #20bf6b, #0fb9b1);
-    color: white;
+    box-shadow: 0 2px 4px rgba(32, 191, 107, 0.3);
 }
 .offline {
     background: linear-gradient(135deg, #fd2323, #fea257);
-    color: white;
+    box-shadow: 0 2px 4px rgba(253, 35, 35, 0.3);
 }
 
 .busy {
     background: linear-gradient(135deg, #f7b731, #fa8231);
-    color: white;
+    box-shadow: 0 2px 4px rgba(247, 183, 49, 0.3);
 }
 
+/* Terminal takes full height on right side */
 .terminal {
+    grid-column: 2;
+    grid-row: 1 / span 3; /* Span all rows */
+    display: flex;
+    flex-direction: column;
+    height: 85%;
     background-color: var(--bg-secondary);
     border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    margin-bottom: 80px;
 }
 
 .terminal-header {
+    padding: 15px;
     background-color: var(--accent-primary);
     color: var(--text-primary);
-    padding: 10px;
 }
 
 .terminal-output {
-    height: 300px;
-    overflow-y: auto;
-    padding: 10px;
-    font-family: monospace;
+    flex-grow: 1;
+    padding: 15px;
+    font-family: 'Consolas', monospace;
     background-color: var(--bg-primary);
     color: var(--text-primary);
+    overflow-y: auto;
+    font-size: 0.9em;
+    line-height: 1.4;
 }
 
 .terminal-input {
     display: flex;
-    padding: 10px;
+    padding: 15px;
+    gap: 10px;
+    background-color: var(--bg-secondary);
 }
 
 .terminal-input input {
     flex-grow: 1;
-    margin-right: 10px;
+    padding: 8px 12px;
+    border-radius: 5px;
+    border: 1px solid var(--accent-primary);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
 }
 
 .user-profile {
@@ -855,6 +923,188 @@ input:focus {
     to { opacity: 1; }
 }
 
-.dashboard-section {
-    animation: fadeIn 0.5s ease-out forwards;
+/* User profile styles */
+.user-profile {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-secondary);
+    padding: 10px;
+    border-radius: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+/* User avatar styles */
+.user-profile img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+/* Welcome message styles */
+.user-profile h2 {
+    font-size: 0.9em;
+    margin: 0;
+}
+
+/* Notifications section styles */
+.notifications {
+    font-size: 0.9em;
+}
+
+.notifications h3 {
+    font-size: 1.2em;
+    margin-bottom: 10px;
+}
+
+.notifications ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.notifications li {
+    margin-bottom: 8px;
+    padding: 8px;
+    background-color: var(--bg-primary);
+    border-radius: 5px;
+}
+
+/* Statistics section styles */
+.statistics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+/* Individual statistic card styles */
+.stat-card {
+    background-color: var(--bg-primary);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid rgba(187, 134, 252, 0.1);
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(187, 134, 252, 0.15);
+}
+
+.stat-card.longer {
+    grid-column: span 2;
+}
+
+
+.stat-card h4 {
+    font-size: 0.9em;
+    margin-bottom: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat-card .stat-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--accent-primary);
+    margin: 5px 0;
+}
+
+/* Emphasize the statistic number */
+.stat-card p {
+    font-size: 2em;
+    margin: 0;
+    font-weight: bold;
+}
+
+/* Quick actions section styles */
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    gap: 10px;
+    padding: 10px;
+}
+
+.quick-actions button {
+    padding: 8px 12px;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .dashboard-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
+    }
+
+    .terminal {
+        grid-column: 1;
+        grid-row: 3;
+        height: 500px;
+    }
+
+    .dashboard-section.statistics {
+        grid-column: 1;
+        grid-row: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .stat-card.longer {
+        grid-column: span 1;
+    }
+
+    .quick-actions {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Smooth Scrolling for Terminal */
+.terminal-output {
+    scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar */
+.terminal-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-output::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+.terminal-output::-webkit-scrollbar-thumb {
+    background: var(--accent-primary);
+    border-radius: 4px;
+}
+
+.terminal-output::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-secondary);
+}
+
+/* Animation for dashboard sections */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Apply animation to dashboard sections */
+.dashboard-section {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Stagger the animation for each section */
+.dashboard-section:nth-child(1) { animation-delay: 0.1s; }
+.dashboard-section:nth-child(2) { animation-delay: 0.2s; }
+.dashboard-section:nth-child(3) { animation-delay: 0.3s; }
+.dashboard-section:nth-child(4) { animation-delay: 0.4s; }

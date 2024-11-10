@@ -17,12 +17,15 @@ import time
 import json
 from rich import print
 from typing import Dict, List
-
+from rich.console import Console
+console = Console()
 # Initialize global variables
 online_servers: Dict[str, Server] = {}
 accounts = Accounts()
 manager = WebSocketManager()
 
+if not os.path.exists("servers"):
+    os.makedirs("servers")
 
 # Start the monitoring task when the application starts
 @asynccontextmanager
@@ -41,13 +44,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(docs_url=None, redoc_url=None, lifespan=lifespan)
 
 # Add CORS middleware to allow frontend connections
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # In production, replace with your frontend URL
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 web = Jinja2Templates(directory="static")
@@ -85,11 +88,12 @@ def removeServerOnline(server):
 # Console output handler
 async def handle_console_output(server_name: str, message: str):
     """Broadcast console output to WebSocket clients"""
-    await manager.broadcast({
-        "type": "console",
-        "server": server_name,
-        "line": message
-    })
+    if "RCON" not in str(message):
+        await manager.broadcast({
+            "type": "console",
+            "server": server_name,
+            "line": message
+        })
 
 # Server status handler
 async def handle_server_status(server_name: str, status: str):
@@ -149,15 +153,17 @@ async def monitor_servers():
         for server_name, server in online_servers.items():
             try:
                 # Get server metrics
-                metrics = await server.get_metrics()
+                metrics = await server.get_metrics(True)
                 await manager.broadcast({
                     "type": "metrics",
                     "server": server_name,
                     "metrics": metrics
                 })
             except Exception as e:
+                console.print_exception()
                 print(f"Error monitoring server {server_name}: {e}")
-        await asyncio.sleep(5)  # Update every 5 seconds
+        #TODO: Change it to every 1m
+        await asyncio.sleep(1)  # Update every 5 seconds
 
 
 def render(name: str,request: Request, **kwargs) -> HTMLResponse:
@@ -180,8 +186,16 @@ def create(request: CreateServerRequest):
     except KeyError:
         raise HTTPException(status_code=422, detail="Invalid server type")
     request.maxRam = int(request.maxRam) * 1024
+    request.minRam = int(request.minRam) * 1024
     Server(addServerOnline(request.name), server_type, request.version, request.minRam, request.maxRam, request.port, request.maxPlayers)
     return {"status": "created"}
+
+async def setOnline(server: Server,server_name: str):
+    while True:
+        if server.status == "online":
+            await handle_server_status(server_name, "online")
+        await asyncio.sleep(1.0)
+        
 
 @app.post("/start")
 async def start(request: ServerNameRequest):
@@ -196,7 +210,8 @@ async def start(request: ServerNameRequest):
 
         online_servers[request.server] = server
         server.start()
-        await handle_server_status(server_name, "online")
+        asyncio.create_task(setOnline(server,server_name))
+        # await handle_server_status(server_name, "online")
         return {"status": "started"}
     except Exception as e:
         print(str(e))
@@ -364,7 +379,7 @@ def create_page(request: Request, user: str = Depends(get_current_user)):
     return render("create.html", request)
 
 @app.get("/servers/{server}")
-def server_page(request: Request, server: str, user: str = Depends(get_current_user)):
+async def server_page(request: Request, server: str, user: str = Depends(get_current_user)):
     if user == False:
         return HTMLResponse(status_code=302, headers={"Location": "/login"})
     if server not in get_servers():
@@ -374,6 +389,12 @@ def server_page(request: Request, server: str, user: str = Depends(get_current_u
     data["name"] = sendServerName(data["name"])
     data["public"] = serverMinecraft.ip["public"]
     data["private"] = serverMinecraft.ip["private"]
+    metrics= await serverMinecraft.get_metrics()
+    data["lengthPlayers"] = metrics["player_count"]
+    data["uptime"] = metrics["uptime"]
+    data["cpu"] = f"%{metrics["cpu_usage"]}"
+    data["ram"] = f"%{metrics["memory_usage"]}"
+    data["type"] = str(data["type"]).capitalize()
     print(data)
     return render("server.html", request, server=data)
 
