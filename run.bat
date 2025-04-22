@@ -1,3 +1,2 @@
-Start uvicorn main:app --reload --port 8001
-cd slap_box
-npm start
+cd backend 
+python -m uvicorn core:app --reload --port 25401

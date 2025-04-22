@@ -3,6 +3,7 @@
         "basemodels",
         "gamemode",
         "itsdangerous",
+        "Mojang",
         "npcs",
         "rcon"
     ],
@@ -38,5 +39,7 @@
             }
         }
         
-    ]}
+    ]
+},
+"python.analysis.typeCheckingMode": "basic"
 }

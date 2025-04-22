@@ -1,34 +1,114 @@
-# MineGimmeThat (Work in Progress)
+# 🎮 MineGimmeThat
 
-### A Minecraft local Hosting server
+> 🌟 A delightful Minecraft server manager with a modern web interface!
 
-## Introduction
+## ✨ Introduction
 
-This is a simple Minecraft server hosting script that allows you to host a Minecraft server on your local machine. It is written in Python and uses the `subprocess` module to run the Minecraft server jar file. The script also includes a simple web interface that allows you to start and stop the server, as well as view the server logs.
+MineGimmeThat is your friendly companion for hosting and managing Minecraft servers on your local machine! Built with Python and a sleek Next.js frontend, it makes running Minecraft servers as easy as pie! 🥧
 
-## Features
+## 🚀 Features
 
-- Start and stop the Minecraft server with a single click.
-- View real-time server logs through the web interface.
-- Simple and intuitive web interface.
-- Lightweight and easy to set up.
-- Customizable server settings.
-- Plug and play.
-- Support for multiple server instances.
-- Installing Mods and Plugins easily.
+- 🎯 **Easy Server Management**
 
-## Requirements
+  - Start, stop, and restart servers with a single click
+  - Real-time server console with command support
+  - Monitor CPU, memory usage, and player count
+  - Multiple server instances support
 
-- Windows duh
-- Java installed on your machine (8 or higher)
-- Python 3 installed on your machine (if you want to run the script)
+- 📊 **Server Details**
 
-## Installation
+  - Live server status and performance monitoring
+  - Player management with whitelist support
+  - Connection information (private & public IPs)
+  - Server logs viewer
 
-- Download the latest release from the releases page.
-- Install the program by running the installer.
-- Have fun!
+- 🔧 **Advanced Features**
 
-## Usage
+  - File manager for easy configuration
+  - Plugin management system
+  - Automated backups
+  - Server settings customization
+  - Multiple server types support (Paper, Vanilla, Fabric)
 
-When you run the program, it will automatically start the server. and you can access the web interface by going to `http://<Local Ip Of your PC>:8001` in your web browser. From there, you can start and stop the server, as well as view the server logs.
+- 🎨 **Modern Web Interface**
+  - Beautiful, responsive design
+  - Real-time updates
+  - Dark mode interface
+  - Mobile-friendly
+
+## 🛠️ Requirements
+
+- 🖥️ **Operating System**: Windows, Linux, or MacOS
+- ☕ **Java**: Java 17 or higher
+- 🐍 **Python**: Python 3.10 or higher
+- 🌐 **Node.js**: v18 or higher (for the web interface)
+
+## 📦 Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/mahirox36/MineGimmeThat.git
+   cd MineGimmeThat
+   ```
+
+2. Install Python dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Install frontend dependencies:
+
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+4. Start the application:
+
+   ```bash
+   # In the backend directory
+   python -m uvicorn core:app --port 25401
+   # In the frontend directory
+   npm run build
+   npm run start
+   ```
+
+## 🎮 Usage
+
+1. Access the web interface at `http://localhost:3000`
+2. Log in with your credentials
+3. Create a new server or manage existing ones
+4. Enjoy your Minecraft server! 🎉
+
+## 🌈 Server Types
+
+MineGimmeThat supports various server types:
+
+- 📜 **Paper** - High performance with plugin support
+- 🎲 **Vanilla** - Pure Minecraft experience
+- 🧶 **Fabric** - Lightweight mod support
+- And more coming soon! ✨
+
+## 🤝 Contributing
+
+Feel free to contribute! Whether it's:
+
+- 🐛 Reporting bugs
+- 💡 Suggesting features
+- 🔧 Submitting pull requests
+
+All contributions are welcome!
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 💖 Support
+
+Found this helpful? Give us a star! ⭐
+
+---
+
+Made with 💝 for the Minecraft community

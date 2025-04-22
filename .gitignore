@@ -5,3 +5,12 @@ __pycache__/
 tests/
 
 .secret*/
+Spigot/
+PortableGit*/
+apache-maven*/
+work/
+cache/
+BuildTools.log.txt
+
+logs/
+data/
