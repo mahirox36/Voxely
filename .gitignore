@@ -14,3 +14,5 @@ BuildTools.log.txt
 
 logs/
 data/
+
+test.*

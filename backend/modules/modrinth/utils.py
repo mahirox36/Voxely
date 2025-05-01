@@ -5,11 +5,14 @@ Contains helper classes, enums, and functions for working with the Modrinth API.
 
 from json import dumps
 from typing import Any, Optional, Union, TypeVar, Dict, overload
+import logging
 from enum import StrEnum
 from datetime import datetime
 from urllib.parse import quote
 
 T = TypeVar('T')
+
+logger = logging.getLogger(__name__)
 
 # Helper types for validation
 OptionalT = TypeVar('OptionalT')
@@ -138,17 +141,19 @@ def list_to_query_param(values: list[str], param) -> str:
     # %22 is the URL-encoded representation of a double quote (")
     # %2C is the URL-encoded representation of a comma (,)
     # + is the URL-encoded representation of a space
+    
     json_array = dumps(values)
-    print(json_array)
+    logger.debug(json_array)
     return f"{param}={quote(json_array)}"
 
 class ProjectType(StrEnum):
     """Enum for Modrinth project types."""
     MOD = "mod"
-    DATA_PACK = "data_pack"
-    WORLD = "world"
     MODPACK = "modpack"
+    RESOURCEPACK = "resourcepack"
+    SHADER = "shader"
     PLUGIN = "plugin"
+    DATAPACK = "datapack"
     
 class SideType(StrEnum):
     """Enum for Modrinth side support."""

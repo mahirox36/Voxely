@@ -192,8 +192,7 @@ class HTTPClient:
                                 string = list_to_query_param(value, key)
                                 url += f"?{string}"
                                 params.pop(key)
-                # print the request method and URL for debugging
-                print(f"Making {method} request to {url} with params: {kwargs.get('params', {})}")
+                logger.debug(f"Making {method} request to {url} with params: {kwargs.get('params', {})}")
                 async with self.session.request(method, url, **kwargs) as response: # type: ignore
                     return await self._handle_response(response)
                     
@@ -218,43 +217,47 @@ class HTTPClient:
     def _facets_to_list(
         self,
         versions: str = MISSING,
-        project_types: List[str] = MISSING,
+        project_type: str = MISSING,
         categories: List[str] = MISSING,
-        open_source: bool = False,
-        license: str = MISSING,
-    ) -> list:
+        open_source: bool = MISSING,
+        client_side: bool = MISSING,
+        server_side: bool = MISSING,
+    ) -> List[List[str]]:
         """
-        Convert filter parameters to a faceted search string.
+        Convert filter parameters to a faceted search list.
         
         Args:
             versions (str, optional): Version filter
-            project_types (List[str], optional): Project type filters
+            project_type (str, optional): Project type filters
             categories (List[str], optional): Category filters
             open_source (bool, optional): Filter by open source projects
-            license (str, optional): License filter
+            client_side (bool, optional): Filter by client-side projects
+            server_side (bool, optional): Filter by server-side projects
             
         Returns:
-            str: Formatted faceted search string
+            List[List[str]]: Formatted faceted search list
         """
         facets = []
         
-        if versions is not MISSING:
-            facets.append(f"versions:{versions}")
-            
-        if project_types is not MISSING:
-            for project_type in project_types:
-                facets.append(f"project_types:{project_type}")
-                
         if categories is not MISSING:
             for category in categories:
-                facets.append(f"categories:{category}")
-                
-        if open_source:
-            facets.append(f"open_source:{str(open_source).lower()}")
-            
-        if license is not MISSING:
-            facets.append(f"license:{license}")
-            
+                facets.append([f"categories:{category}"])
+        
+        if versions is not MISSING:
+            facets.append([f"versions:{versions}"])
+        
+        if project_type is not MISSING:
+            facets.append([f"project_type:{project_type}"])
+        
+        if open_source is not MISSING:
+            facets.append([f"open_source:{'true' if client_side else 'false'}"])
+        
+        if client_side is not MISSING:
+            facets.append([f"client_side:{'true' if client_side else 'false'}"])
+        
+        if server_side is not MISSING:
+            facets.append([f"server_side:{'true' if server_side else 'false'}"])
+        
         return facets
 
     async def _get_project(self, project_id: str) -> Dict[str, Any]:
@@ -299,10 +302,9 @@ class HTTPClient:
         offset: int = 0,
         sort: str = "relevance",
         versions: str = MISSING,
-        project_types: List[str] = MISSING,
+        project_type: str = MISSING,
         categories: List[str] = MISSING,
-        open_source: bool = False,
-        license: str = MISSING,
+        open_source: bool = MISSING,
     ) -> Dict[str, Union[List[Dict[str, Union[str, int, List[str]]]], int]]:
         """
         Search for projects.
@@ -313,10 +315,9 @@ class HTTPClient:
             offset (int): Results offset for pagination (default: 0)
             sort (str): Sort method (default: "relevance")
             versions (str, optional): Filter by versions
-            project_types (List[str], optional): Filter by project types
+            project_type (str, optional): Filter by project types
             categories (List[str], optional): Filter by categories
             open_source (bool): Filter by open source projects (default: False)
-            license (str, optional): Filter by license
             
         Returns:
             Dict[str, Union[List[Dict[str, Any]], int]]: Search results
@@ -325,10 +326,9 @@ class HTTPClient:
         
         facets = self._facets_to_list(
             versions=versions,
-            project_types=project_types,
+            project_type=project_type,
             categories=categories,
             open_source=open_source,
-            license=license,
         )
         
         params = {
@@ -347,14 +347,14 @@ class HTTPClient:
 
     async def _get_categories_tags(self) -> List[Dict[str, Any]]:
         """Fetch all category tags."""
-        result = await self._request("GET", "tags/category")
+        result = await self._request("GET", "tag/category")
         if not isinstance(result, list):
             raise ModrinthException("Expected a list response for category tags")
         return result
     
     async def _get_loader_tags(self) -> List[Dict[str, Any]]:
         """Fetch all loader tags."""
-        result = await self._request("GET", "tags/loader")
+        result = await self._request("GET", "tag/loader")
         if not isinstance(result, list):
             raise ModrinthException("Expected a list of dictionaries for loader tags")
         return result
@@ -392,7 +392,7 @@ class HTTPClient:
         if not isinstance(result, dict):
             raise ModrinthException("Expected a dictionary response for version data")
         return result
-    async def _get_versions(self, project_ids) -> List[Dict[str, Any]]:
+    async def _get_versions(self, project_ids: List[str]) -> List[Dict[str, Any]]:
         """
         Fetch all versions for a given project.
         
@@ -407,7 +407,7 @@ class HTTPClient:
             ValidationError: If the API returns invalid data
         """
         validate_input(project_ids, "project_ids")
-        result = await self._request("GET", f"version", params={"ids": project_ids})
+        result = await self._request("GET", f"versions", params={"ids": project_ids})
         if not isinstance(result, list):
             raise ModrinthException("Expected a list response for version data")
         return result

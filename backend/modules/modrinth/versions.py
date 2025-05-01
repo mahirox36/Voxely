@@ -239,7 +239,7 @@ class Versions:
         """
         self.http_session = http_client
     
-    async def get_versions(self, project_id: str) -> List[Version]:
+    async def get_versions(self, version_ids: List[str]) -> List[Version]:
         """
         Fetch all versions for a given project.
 
@@ -254,7 +254,7 @@ class Versions:
             ValidationError: If the API returns invalid data
         """
         try:
-            versions_data = await self.http_session._get_versions(project_id)
+            versions_data = await self.http_session._get_versions(version_ids)
             return [Version(data) for data in versions_data]
         except Exception as e:
             raise NotFoundError(f"Failed to fetch versions: {str(e)}")

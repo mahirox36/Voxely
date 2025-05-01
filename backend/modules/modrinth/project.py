@@ -24,6 +24,7 @@ from .utils import (
     MonetizationStatus,
     NotFoundError,
     ProjectStatus,
+    ProjectType,
     RequestedStatus,
     SideType,
     format_datetime,
@@ -196,7 +197,22 @@ class Project:
         Raises:
             NotFoundError: If no versions are found
         """
-        return await self.get_version(self.versions[0])
+        return await self.get_version(self.latest_version)
+    
+    @property
+    def latest_version(self) -> str:
+        """
+        Get the latest version ID.
+        
+        Returns:
+            str: The latest version ID
+            
+        Raises:
+            NotFoundError: If no versions are found
+        """
+        if not self.versions:
+            raise NotFoundError("No versions found for this project")
+        return self.versions[0]  # First version in the list is the latest
 
 class SearchResult:
     """Container for project search results."""
@@ -220,6 +236,30 @@ class SearchResult:
         self.total_hits: int = data.get("total_hits", 0)
         self.offset: int = data.get("offset", 0)
         self.limit: int = data.get("limit", 0)
+    
+    async def get_versions(self) -> List[Version]:
+        """
+        Get all the latest versions for the projects in the search results.
+        
+        Returns:
+            List[Version]: List of all versions for the projects
+            
+        Raises:
+            NotFoundError: If no versions are found
+        """
+        if not self.hits:
+            raise NotFoundError("No projects found in search results")
+        
+        if not self.hits:
+            raise NotFoundError("No projects found in search results")
+        if not self.hits[0]._http:
+            raise ValueError("HTTP client is not initialized.")
+        
+        versions = Versions(self.hits[0]._http)
+        versionsCodes = [project.latest_version for project in self.hits]
+        if not versionsCodes:
+            raise NotFoundError("No versions found for this project")
+        return await versions.get_versions(versionsCodes)
 
     def __repr__(self) -> str:
         return f"<SearchResult hits={len(self.hits)} total={self.total_hits}>"
@@ -297,10 +337,9 @@ class Projects:
         offset: int = 0,
         sort: str = "relevance",
         versions: str = MISSING,
-        project_types: List[str] = MISSING,
+        project_type: ProjectType = MISSING,
         categories: List[str] = MISSING,
-        open_source: bool = False,
-        license: str = MISSING,
+        open_source: bool = MISSING,
     ) -> SearchResult:
         """
         Search for projects with optional filters.
@@ -311,10 +350,9 @@ class Projects:
             offset (int): Results offset for pagination (default: 0)
             sort (str): Sort method (default: "relevance")
             versions (str, optional): Filter by versions
-            project_types (List[str], optional): Filter by project types
+            project_type (str, optional): Filter by project types
             categories (List[str], optional): Filter by categories
             open_source (bool): Filter by open source projects (default: False)
-            license (str, optional): Filter by license
             
         Returns:
             SearchResult: Container with search results
@@ -335,10 +373,9 @@ class Projects:
             offset=offset,
             sort=sort,
             versions=versions,
-            project_types=project_types,
+            project_type=project_type,
             categories=categories,
             open_source=open_source,
-            license=license,
         )
         hits = data.get("hits", [])
         if not isinstance(hits, list):
