@@ -6,12 +6,13 @@ import time
 import json
 from functools import lru_cache
 from datetime import datetime
-
+from rich.console import Console
 from modules.servers import Server, ServerType, get_servers, ServerStatus, invalidate_server_cache
 from modules.jar import MinecraftServerDownloader
 from .auth import get_current_user, User
 
 router = APIRouter(prefix="/servers", tags=["servers"])
+console = Console(log_path=False, force_terminal=True)
 
 # Models
 class CreateServerRequest(BaseModel):
@@ -142,11 +143,7 @@ async def list_servers(request: Request):
 async def get_available_versions(request: Request):
     """Get available Minecraft versions for different server types"""
     # Authenticate the user
-    try:
-        current_user = await get_current_user(request)
-    except Exception as e:
-        print(f"Authentication error in versions endpoint: {e}")
-        raise
+    current_user = await get_current_user(request)
     
     try:
         print("Fetching versions...")
@@ -203,6 +200,7 @@ async def create_server(request: Request, server_request: CreateServerRequest):
         # Don't automatically accept EULA
         return {"message": "Server created successfully", "needsEulaAcceptance": True}
     except Exception as e:
+        console.print_exception(show_locals=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Server-specific routes

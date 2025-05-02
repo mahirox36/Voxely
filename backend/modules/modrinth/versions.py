@@ -11,6 +11,7 @@ Example:
     ...     print(f"Version: {version.name} ({version.version_number})")
 """
 
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from .http import HTTPClient
@@ -61,7 +62,7 @@ class File:
             data.get("file_type"), "file_type", required=False
         )
 
-    async def download(self, path: str, chunk_size: int = 8192) -> str:
+    async def download(self, path: str | Path, chunk_size: int = 8192) -> str:
         """
         Download the file to the specified path.
 
@@ -201,7 +202,7 @@ class Version:
         """Get the primary file for this version."""
         return next((file for file in self.files if file.primary), None)
 
-    async def download_primary(self, path: str) -> Optional[str]:
+    async def download_primary(self, path: str | Path) -> Optional[str]:
         """
         Download the primary file for this version.
 

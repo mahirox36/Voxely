@@ -14,6 +14,7 @@ Example:
 """
 
 from typing import List, Dict, Any, Optional, Union
+
 from datetime import datetime
 import aiohttp
 import os
@@ -32,6 +33,7 @@ from .utils import (
     ValidationError
 )
 from rich import print
+from dataclasses import asdict, dataclass
 
 all = [
     "Project",
@@ -59,6 +61,19 @@ class License:
     def __repr__(self) -> str:
         return f"<License id='{self.id}' name='{self.name}'>"
 
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert license data to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the license
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "url": self.url,
+        }
+
 class GalleryItem:
     """
     Represents a project gallery item.
@@ -84,6 +99,22 @@ class GalleryItem:
 
     def __repr__(self) -> str:
         return f"<GalleryItem url='{self.url}' featured={self.featured}>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert gallery item data to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the gallery item
+        """
+        return {
+            "url": self.url,
+            "featured": self.featured,
+            "ordering": self.ordering,
+            "created": self.created.isoformat(),
+            "title": self.title,
+            "description": self.description,
+        }
 
 class Project:
     """
@@ -161,6 +192,41 @@ class Project:
 
         # HTTP client for making API requests
         self._http: Optional[HTTPClient] = None
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert project data to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the project
+        """
+        return {
+            "id": self.id,
+            "slug": self.slug,
+            "title": self.title,
+            "description": self.description,
+            "downloads": self.downloads,
+            "followers": self.followers,
+            "license": self.license.to_dict() if self.license else None,
+            "versions": self.versions,
+            "categories": self.categories,
+            "client_side": str(self.client_side) if self.client_side else None,
+            "server_side": str(self.server_side) if self.server_side else None,
+            "body": self.body,
+            "status": str(self.status) if self.status else None,
+            "requested_status": str(self.requested_status) if self.requested_status else None,
+            "additional_categories": self.additional_categories,
+            "issues_url": self.issues_url,
+            "source_url": self.source_url,
+            "wiki_url": self.wiki_url,
+            "discord_url": self.discord_url,
+            "donation_urls": self.donation_urls,
+            "icon_url": self.icon_url,
+            "color": self.color,
+            "game_versions": self.game_versions,
+            "loaders": self.loaders,
+            "gallery": [item.to_dict() for item in self.gallery],
+        }
 
     def __repr__(self) -> str:
         return f"<Project id='{self.id}' title='{self.title}'>"
@@ -269,6 +335,20 @@ class SearchResult:
 
     def __len__(self) -> int:
         return len(self.hits)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert search results to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the search results
+        """
+        return {
+            "hits": [project.to_dict() for project in self.hits],
+            "total_hits": self.total_hits,
+            "offset": self.offset,
+            "limit": self.limit,
+        }
 
 class Projects:
     """

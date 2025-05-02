@@ -19,6 +19,7 @@ import logging
 import glob
 from dataclasses import dataclass
 from contextlib import contextmanager
+from .jar import ServerType
 
 # Set up root logger configuration
 logging.basicConfig(
@@ -47,11 +48,7 @@ class ServerStatus(StrEnum):
     STOPPING = "stopping"
 
 
-class ServerType(StrEnum):
-    VANILLA = "vanilla"
-    FABRIC = "fabric"
-    PAPER = "paper"
-    CUSTOM = "custom"
+
 
 
 def get_servers(space: bool = False, use_cache: bool = True):
@@ -184,6 +181,13 @@ class Server:
         self._lock = threading.Lock()
         self._shutdown_event = threading.Event()
         self.started_at = None  # Initialize started_at attribute here
+        match type:
+            case ServerType.PAPER | ServerType.PURPUR:
+                self.addon_path = self.path / "plugins"
+            case ServerType.FABRIC:
+                self.addon_path = self.path / "mods"
+            case _:
+                self.addon_path = None
 
         serverExists = self.path.exists()
         # Setup logger for this server instance

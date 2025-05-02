@@ -1,3 +1,4 @@
+from enum import StrEnum
 import os
 import requests
 import json
@@ -19,13 +20,18 @@ file_handler = logging.FileHandler("logs/jar_downloader.log")
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 jar_logger.addHandler(file_handler)
 
+class ServerType(StrEnum):
+    VANILLA = "vanilla"
+    FABRIC = "fabric"
+    PAPER = "paper"
+    PURPUR = "purpur"
+
 class MinecraftServerDownloader:
     def __init__(self):
         self.version_manifest_url = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
         self.paper_api_url = "https://api.papermc.io/v2/projects/paper"
         self.fabric_meta_url = "https://meta.fabricmc.net/v2/versions"
         self.forge_api_url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
-        self.spigot_versions_url = "https://hub.spigotmc.org/versions/"
         self.purpur_api_url = "https://api.purpurmc.org/v2/purpur"
         
         self.cache_dir = "cache"

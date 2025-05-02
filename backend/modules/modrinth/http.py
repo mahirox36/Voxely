@@ -83,7 +83,7 @@ class HTTPClient:
 
     BASE_URL = "https://api.modrinth.com/v2"
     DEFAULT_HEADERS = {
-        "User-Agent": "MineGimmeThat/1.0.0 (python-modrinth-api)"
+        "User-Agent": "Voxely/1.0.0 (python-modrinth-api)"
     }
     MAX_RETRIES = 3
 

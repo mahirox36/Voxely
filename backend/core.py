@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import logging
 from api.v1 import router as api_v1_router
@@ -15,7 +17,8 @@ app = FastAPI(
     description="API for MineGimme (Local Minecraft Server Management and Hosting)",
     version="1.0.0",
     # Disable automatic redirects for routes with/without trailing slashes
-    redirect_slashes=False
+    redirect_slashes=False,
+    docs_url=None,  # Disable default docs URL
 )
 
 # Add CORS middleware
@@ -29,17 +32,13 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_v1_router)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Add middleware to debug auth headers
-@app.middleware("http")
-async def debug_request(request: Request, call_next):
-    path = request.url.path
-    if 'servers' in path:
-        auth_header = request.headers.get('Authorization')
-        print(f"Request to {path}, Auth header: {auth_header and auth_header[:20]}...")
-    
-    response = await call_next(request)
-    return response
+
+@app.get("/docs", include_in_schema=False)
+async def custom_docs():
+    return FileResponse("static/stoplight/index.html")
 
 class APIConfig:
     def __init__(

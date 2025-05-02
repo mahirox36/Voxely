@@ -41,5 +41,11 @@
         
     ]
 },
-"python.analysis.typeCheckingMode": "basic"
+"python.analysis.typeCheckingMode": "basic",
+"files.exclude": {
+    "**/*.rpyc": true,
+    "**/*.rpa": true,
+    "**/*.rpymc": true,
+    "**/cache/": true
+}
 }
