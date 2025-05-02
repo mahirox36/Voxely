@@ -15,7 +15,7 @@ export default function Footer() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="text-center md:text-left">
             <h3 className="text-lg font-semibold text-white mb-2">
-              MineGimmeThat
+              Voxely
             </h3>
             <p className="text-white/60">
               Easy Minecraft server management
@@ -24,7 +24,7 @@ export default function Footer() {
 
           <div className="flex items-center gap-6">
             <a
-              href="https://github.com/yourusername/MineGimmeThat"
+              href="https://github.com/yourusername/Voxely"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white/60 hover:text-white transition-colors"
@@ -44,7 +44,7 @@ export default function Footer() {
 
         <div className="mt-8 pt-4 border-t border-white/10">
           <p className="text-center text-white/60 flex items-center justify-center gap-2">
-            Made with <FaHeart className="text-pink-500" /> by Mahiro
+            Made with <FaHeart className="text-pink-500" /> by Mahiro & Xorg
           </p>
         </div>
       </div>

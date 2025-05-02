@@ -8,7 +8,7 @@ import Footer from '@/components/Footer';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'MineGimmeThat - Minecraft Server Manager',
+  title: 'Voxely - Minecraft Server Manager',
   description: 'Create and manage your Minecraft servers easily',
 };
 

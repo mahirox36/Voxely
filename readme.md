@@ -1,10 +1,10 @@
-# 🎮 MineGimmeThat
+# 🎮 Voxely
 
 > 🌟 A delightful Minecraft server manager with a modern web interface!
 
 ## ✨ Introduction
 
-MineGimmeThat is your friendly companion for hosting and managing Minecraft servers on your local machine! Built with Python and a sleek Next.js frontend, it makes running Minecraft servers as easy as pie! 🥧
+Voxely is your friendly companion for hosting and managing Minecraft servers on your local machine! Built with Python and a sleek Next.js frontend, it makes running Minecraft servers as easy as pie! 🥧
 
 ## 🚀 Features
 
@@ -48,8 +48,8 @@ MineGimmeThat is your friendly companion for hosting and managing Minecraft serv
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/mahirox36/MineGimmeThat.git
-   cd MineGimmeThat
+   git clone https://github.com/mahirox36/Voxely.git
+   cd Voxely
    ```
 
 2. Install Python dependencies:
@@ -84,7 +84,7 @@ MineGimmeThat is your friendly companion for hosting and managing Minecraft serv
 
 ## 🌈 Server Types
 
-MineGimmeThat supports various server types:
+Voxely supports various server types:
 
 - 📜 **Paper** - High performance with plugin support
 - 🎲 **Vanilla** - Pure Minecraft experience

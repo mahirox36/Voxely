@@ -31,7 +31,7 @@ export default function Navbar() {
         <div className="h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <FaServer className="text-pink-500 text-2xl" />
-            <span className="text-xl font-bold text-white">MineGimmeThat</span>
+            <span className="text-xl font-bold text-white">Voxely</span>
           </Link>
 
           <div className="flex items-center gap-6">

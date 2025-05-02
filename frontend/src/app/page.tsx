@@ -1,30 +1,34 @@
-'use client';
+"use client";
 
-import { motion } from 'framer-motion';
-import Link from 'next/link';
-import Image from 'next/image';
-import { FaServer, FaRocket, FaShieldAlt, FaCogs } from 'react-icons/fa';
+import { motion } from "framer-motion";
+import Link from "next/link";
+import Image from "next/image";
+import { FaServer, FaRocket, FaShieldAlt, FaCogs } from "react-icons/fa";
 
 const features = [
   {
     icon: <FaServer className="text-4xl text-pink-500" />,
-    title: 'Easy Server Creation',
-    description: 'Create Minecraft servers in just a few clicks. Support for Vanilla, Paper, Fabric, and more.',
+    title: "Easy Server Creation",
+    description:
+      "Create Minecraft servers in just a few clicks. Support for Vanilla, Paper, Fabric, and more.",
   },
   {
     icon: <FaRocket className="text-4xl text-blue-500" />,
-    title: 'Instant Deployment',
-    description: 'Your server will be up and running in seconds with optimized performance settings.',
+    title: "Instant Deployment",
+    description:
+      "Your server will be up and running in seconds with optimized performance settings.",
   },
   {
     icon: <FaShieldAlt className="text-4xl text-purple-500" />,
-    title: 'Secure Management',
-    description: 'Full control over your servers with secure authentication and user management.',
+    title: "Secure Management",
+    description:
+      "Full control over your servers with secure authentication and user management.",
   },
   {
     icon: <FaCogs className="text-4xl text-green-500" />,
-    title: 'Advanced Controls',
-    description: 'Monitor performance, manage players, and control your server through an intuitive interface.',
+    title: "Advanced Controls",
+    description:
+      "Monitor performance, manage players, and control your server through an intuitive interface.",
   },
 ];
 
@@ -61,8 +65,8 @@ export default function Home() {
               </span>
             </h1>
             <p className="text-xl text-white/60 mb-12 max-w-2xl mx-auto">
-              Create, manage, and monitor your Minecraft servers with ease.
-              Get started in minutes with our intuitive interface.
+              Create, manage, and monitor your Minecraft servers with ease. Get
+              started in minutes with our intuitive interface.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/signup" className="btn btn-primary">
@@ -112,39 +116,75 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               <div>
                 <h2 className="text-3xl font-bold text-white mb-4">
-                  Why Choose MineGimmeThat?
+                  Why Choose Voxely?
                 </h2>
                 <ul className="space-y-4">
                   <li className="flex items-start gap-3">
                     <div className="rounded-full bg-green-500/20 p-1">
-                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      <svg
+                        className="w-5 h-5 text-green-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
                     </div>
-                    <p className="text-white/80">Easy to use interface with real-time monitoring</p>
+                    <p className="text-white/80">
+                      Easy to use interface with real-time monitoring
+                    </p>
                   </li>
                   <li className="flex items-start gap-3">
                     <div className="rounded-full bg-green-500/20 p-1">
-                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      <svg
+                        className="w-5 h-5 text-green-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
                     </div>
-                    <p className="text-white/80">Support for multiple server types and versions</p>
+                    <p className="text-white/80">
+                      Support for multiple server types and versions
+                    </p>
                   </li>
                   <li className="flex items-start gap-3">
                     <div className="rounded-full bg-green-500/20 p-1">
-                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      <svg
+                        className="w-5 h-5 text-green-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
                     </div>
-                    <p className="text-white/80">Advanced performance optimization</p>
+                    <p className="text-white/80">
+                      Advanced performance optimization
+                    </p>
                   </li>
                 </ul>
               </div>
               <div className="relative">
                 <div className="aspect-video rounded-lg overflow-hidden">
                   <Image
-                    src="/screenshot.png"
+                    src="https://images.unsplash.com/photo-1742599968125-a790a680a605?q=80&w=3464&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
                     alt="Dashboard Preview"
                     className="w-full h-full object-cover opacity-80"
                     width={1920}
