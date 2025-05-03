@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 T = TypeVar('T')
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("modrinth")
 
 # Helper types for validation
 OptionalT = TypeVar('OptionalT')
@@ -35,6 +35,7 @@ all = [
     "VersionType",
     "DependencyType",
     "VersionStatus",
+    "logger"
 ]
 
 

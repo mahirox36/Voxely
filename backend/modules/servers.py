@@ -22,11 +22,12 @@ from contextlib import contextmanager
 from .jar import ServerType
 
 # Set up root logger configuration
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("logs/server_module.log")],  # Removed StreamHandler to stop console printing
-)
+logger = logging.getLogger("server")
+file_handler = logging.FileHandler("logs/server_module.log")
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 # Create logs directory if it doesn't exist
 os.makedirs("logs", exist_ok=True)

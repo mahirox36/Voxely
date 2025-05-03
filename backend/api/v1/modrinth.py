@@ -1,4 +1,5 @@
-from .servers import get_server_instance
+import logging
+from .server.utils import get_server_instance
 from modules.modrinth import MISSING, ProjectType
 from modules.modrinth import Client
 
@@ -18,8 +19,15 @@ from .auth import get_current_user, User
 router = APIRouter(prefix="/modrinth", tags=["modrinth"])
 client = Client()
 
+modrinth_logger = logging.getLogger("modrinth")
+file_handler = logging.FileHandler("logs/modrinth.log")
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+modrinth_logger.addHandler(file_handler)
+
 class Search(BaseModel):
-    query: str
+    query: str = ""
     limit: int = 10
     offset: int = 0
     sort: str = "relevance"
@@ -28,7 +36,7 @@ class Search(BaseModel):
     categories: Optional[str] = None # Comma-separated list of categories
 
 @router.get("/search")
-async def search_mods(query: str, limit: int = 10, offset: int = 0, sort: str = "relevance", project_type: str = "mod", versions: Optional[str] = None, categories: Optional[str] = None):
+async def search_mods(query: str = "", limit: int = 10, offset: int = 0, sort: str = "relevance", project_type: str = "mod", versions: Optional[str] = None, categories: Optional[str] = None):
     """
     Search for mods on Modrinth.
     """

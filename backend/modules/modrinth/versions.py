@@ -14,6 +14,7 @@ Example:
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
+import logging
 from .http import HTTPClient
 from .utils import (
     MISSING,
@@ -31,6 +32,8 @@ all = [
     "Version",
     "Versions",
 ]
+
+logger = logging.getLogger("modrinth.versions")
 
 
 class File:
@@ -76,6 +79,8 @@ class File:
         import os
         import aiohttp
 
+        logger.info(f"Downloading file {self.filename} to {path}")
+
         os.makedirs(path, exist_ok=True)
         filepath = os.path.join(path, self.filename)
 
@@ -87,6 +92,7 @@ class File:
                     async for chunk in response.content.iter_chunked(chunk_size):
                         f.write(chunk)
 
+        logger.debug(f"File downloaded successfully to {filepath}")
         return filepath
 
     def __repr__(self) -> str:
@@ -254,10 +260,12 @@ class Versions:
             NotFoundError: If the project is not found
             ValidationError: If the API returns invalid data
         """
+        logger.info(f"Fetching versions: {version_ids}")
         try:
             versions_data = await self.http_session._get_versions(version_ids)
             return [Version(data) for data in versions_data]
         except Exception as e:
+            logger.error(f"Failed to fetch versions: {str(e)}", exc_info=True)
             raise NotFoundError(f"Failed to fetch versions: {str(e)}")
     
     async def get_version(self, version_id: str) -> Version:
@@ -274,8 +282,10 @@ class Versions:
             NotFoundError: If the project or version is not found
             ValidationError: If the API returns invalid data
         """
+        logger.info(f"Fetching version: {version_id}")
         try:
             version_data = await self.http_session._get_version(version_id)
             return Version(version_data)
         except Exception as e:
+            logger.error(f"Failed to fetch version: {str(e)}", exc_info=True)
             raise NotFoundError(f"Failed to fetch version: {str(e)}")

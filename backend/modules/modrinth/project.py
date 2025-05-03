@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 import aiohttp
 import os
+import logging
 from .http import HTTPClient
 from .versions import *
 from .utils import (
@@ -34,6 +35,8 @@ from .utils import (
 )
 from rich import print
 from dataclasses import asdict, dataclass
+
+logger = logging.getLogger("modrinth.project")
 
 all = [
     "Project",
@@ -245,11 +248,14 @@ class Project:
         Raises:
             NotFoundError: If no versions are found
         """
-        if not self.versions :
+        if not self.versions:
+            logger.warning(f"No versions found for project {self.id}")
             raise NotFoundError("No versions found for this project")
         if self._http is None:
+            logger.error(f"HTTP client not initialized for project {self.id}")
             raise ValueError("HTTP client is not initialized.")
         
+        logger.info(f"Fetching version {id} for project {self.id}")
         return await Versions(self._http).get_version(id)
         
 
@@ -263,6 +269,7 @@ class Project:
         Raises:
             NotFoundError: If no versions are found
         """
+        logger.info(f"Fetching latest version for project {self.id}")
         return await self.get_version(self.latest_version)
     
     @property
@@ -277,7 +284,9 @@ class Project:
             NotFoundError: If no versions are found
         """
         if not self.versions:
+            logger.warning(f"No versions found for project {self.id}")
             raise NotFoundError("No versions found for this project")
+        logger.debug(f"Latest version for project {self.id} is {self.versions[0]}")
         return self.versions[0]  # First version in the list is the latest
 
 class SearchResult:

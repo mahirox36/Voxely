@@ -37,7 +37,7 @@ export default function Dashboard() {
     
     try {
       // Corrected the API endpoint path to ensure it matches the backend
-      const data = await apiRequest('servers');
+      const data = await apiRequest('servers/get');
       
       console.log("Fetched servers data:", data);
       

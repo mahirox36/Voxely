@@ -13,6 +13,7 @@ Example:
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import logging
 from .http import HTTPClient
 from .utils import (
     MISSING, 
@@ -21,6 +22,8 @@ from .utils import (
     ValidationError,
     NotFoundError
 )
+
+logger = logging.getLogger("modrinth.tags")
 
 all = [
     "CategoryTag",
@@ -132,10 +135,12 @@ class Tags:
             NotFoundError: If the category tags endpoint is not found
             ValidationError: If the API returns invalid data
         """
+        logger.info("Fetching category tags")
         try:
             tags = await self.http_session._get_categories_tags()
             return [CategoryTag(tag) for tag in tags]
         except Exception as e:
+            logger.error(f"Failed to fetch category tags: {str(e)}", exc_info=True)
             raise NotFoundError(f"Failed to fetch category tags: {str(e)}")
     
     async def get_loader_tags(self) -> List[LoaderTag]:
@@ -149,10 +154,12 @@ class Tags:
             NotFoundError: If the loader tags endpoint is not found
             ValidationError: If the API returns invalid data
         """
+        logger.info("Fetching loader tags")
         try:
             tags = await self.http_session._get_loader_tags()
             return [LoaderTag(tag) for tag in tags]
         except Exception as e:
+            logger.error(f"Failed to fetch loader tags: {str(e)}", exc_info=True)
             raise NotFoundError(f"Failed to fetch loader tags: {str(e)}")
     
     async def get_game_version_tags(self) -> List[GameVersionTag]:
@@ -166,8 +173,10 @@ class Tags:
             NotFoundError: If the game version tags endpoint is not found
             ValidationError: If the API returns invalid data
         """
+        logger.info("Fetching game version tags")
         try:
             tags = await self.http_session._get_game_versions()
             return [GameVersionTag(tag) for tag in tags]
         except Exception as e:
+            logger.error(f"Failed to fetch game version tags: {str(e)}", exc_info=True)
             raise NotFoundError(f"Failed to fetch game version tags: {str(e)}")

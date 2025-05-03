@@ -32,11 +32,9 @@ from .utils import (
 all = [
     "HTTPClient",
 ]
+logger = logging.getLogger("modrinth.http")
 
 T = TypeVar('T')
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 class RateLimiter:
     """Handles API rate limiting."""
@@ -192,9 +190,17 @@ class HTTPClient:
                                 string = list_to_query_param(value, key)
                                 url += f"?{string}"
                                 params.pop(key)
-                logger.debug(f"Making {method} request to {url} with params: {kwargs.get('params', {})}")
+                
+                logger.info(f"Making {method} request to {url}")
+                logger.debug(f"Request params: {kwargs.get('params', {})}")
+                logger.debug(f"Request headers: {kwargs.get('headers', {})}")
+                
                 async with self.session.request(method, url, **kwargs) as response: # type: ignore
-                    return await self._handle_response(response)
+                    logger.debug(f"Response status: {response.status}")
+                    logger.debug(f"Response headers: {dict(response.headers)}")
+                    response_data = await self._handle_response(response)
+                    logger.debug(f"Response data: {response_data}")
+                    return response_data
                     
             except (
                 aiohttp.ServerConnectionError,
@@ -202,14 +208,19 @@ class HTTPClient:
                 asyncio.TimeoutError
             ) as e:
                 retries += 1
+                logger.warning(f"Request failed (attempt {retries}/{self.MAX_RETRIES}): {str(e)}")
                 if retries >= self.MAX_RETRIES:
+                    logger.error(f"Max retries exceeded: {str(e)}")
                     raise ModrinthException(f"Max retries exceeded: {str(e)}")
                 
                 # Exponential backoff
-                await asyncio.sleep(2 ** retries)
+                wait_time = 2 ** retries
+                logger.info(f"Retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
                 continue
                 
             except Exception as e:
+                logger.error(f"Request failed: {str(e)}", exc_info=True)
                 if isinstance(e, ModrinthException):
                     raise
                 raise ModrinthException(f"Request failed: {str(e)}")

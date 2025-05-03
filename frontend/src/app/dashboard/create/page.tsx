@@ -136,7 +136,7 @@ export default function CreateServer() {
     setError('');
 
     try {
-      await apiRequest('/servers/', {
+      await apiRequest('/servers/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
