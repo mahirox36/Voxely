@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    domains: ['images.unsplash.com'],
+    domains: ['images.unsplash.com', "minotar.net"],
   },
 };
 

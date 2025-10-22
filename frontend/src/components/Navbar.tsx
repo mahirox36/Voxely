@@ -4,11 +4,18 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { FaServer, FaUser, FaSignOutAlt } from 'react-icons/fa';
+import { Server, User, LogOut } from 'lucide-react';
 
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+  const [isServerPage, setIsServerPage] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsServerPage(window.location.pathname.startsWith('/dashboard/server/'));
+    }
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -21,6 +28,8 @@ export default function Navbar() {
     router.push('/login');
   };
 
+  if (isServerPage) return null;
+
   return (
     <motion.nav 
       initial={{ y: -100 }}
@@ -30,7 +39,7 @@ export default function Navbar() {
       <div className="container mx-auto px-4">
         <div className="h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <FaServer className="text-pink-500 text-2xl" />
+            <Server className="text-pink-500 text-2xl" />
             <span className="text-xl font-bold text-white">Voxely</span>
           </Link>
 
@@ -47,7 +56,7 @@ export default function Navbar() {
                   onClick={handleLogout}
                   className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
                 >
-                  <FaSignOutAlt />
+                  <LogOut />
                   Logout
                 </button>
               </>
@@ -56,7 +65,7 @@ export default function Navbar() {
                 href="/login"
                 className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
               >
-                <FaUser />
+                <User />
                 Login
               </Link>
             )}

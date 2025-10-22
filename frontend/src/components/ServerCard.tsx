@@ -2,7 +2,7 @@
 
 import { useState, memo } from 'react';
 import { motion } from 'framer-motion';
-import { FaServer, FaUsers } from 'react-icons/fa';
+import { Server, Users } from 'lucide-react';
 
 interface ServerCardProps {
   name: string;
@@ -82,7 +82,7 @@ const ServerCard = memo(function ServerCard({
             </div>
             <div className="bg-white/5 p-3 rounded flex items-center">
               <div className="mr-2">
-                <FaUsers className="text-white/70" />
+                <Users className="text-white/70" />
               </div>
               <div>
                 <p className="text-white/50 text-xs">Players</p>
@@ -91,7 +91,7 @@ const ServerCard = memo(function ServerCard({
             </div>
             <div className="bg-white/5 p-3 rounded flex items-center">
               <div className="mr-2">
-                <FaServer className="text-white/70" />
+                <Server className="text-white/70" />
               </div>
               <div>
                 <p className="text-white/50 text-xs">Port</p>
@@ -101,7 +101,7 @@ const ServerCard = memo(function ServerCard({
           </>
         ) : (
           <div className="col-span-2 text-center py-4 px-2 bg-white/5 rounded">
-            <FaServer className="text-white/30 text-2xl mx-auto mb-2" />
+            <Server className="text-white/30 text-2xl mx-auto mb-2" />
             <p className="text-white/50">
               {status === 'starting' 
                 ? 'Server is starting...' 

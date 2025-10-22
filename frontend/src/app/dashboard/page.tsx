@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FaPlus } from 'react-icons/fa';
-import ServerCard from '@/components/ServerCard';
-import AuthMiddleware from '@/components/AuthMiddleware';
-import { apiRequest } from '@/utils/api';
+import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus } from "lucide-react";
+import ServerCard from "@/components/ServerCard";
+import AuthMiddleware from "@/components/AuthMiddleware";
+import { api } from "@/utils/api";
 
 interface Server {
   name: string;
-  status: 'online' | 'offline' | 'starting' | 'stopping';
+  status: "online" | "offline" | "starting" | "stopping";
   type: string;
   version: string;
   metrics: {
@@ -26,7 +26,7 @@ interface Server {
 export default function Dashboard() {
   const [servers, setServers] = useState<Server[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const isMounted = useRef(true);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
@@ -34,27 +34,24 @@ export default function Dashboard() {
   // Memoized fetch function to avoid recreating it on each render
   const fetchServers = useCallback(async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
-    
+
     try {
       // Corrected the API endpoint path to ensure it matches the backend
-      const data = await apiRequest('servers/get');
-      
+      const data: Server[] = await api.get("/servers/get");
+
       console.log("Fetched servers data:", data);
-      
-      // Only update state if component is still mounted
-      if (isMounted.current) {
-        setServers(data);
-        setLastUpdated(new Date());
-        setError('');
-      }
+
+      setServers(data);
+      setLastUpdated(new Date());
+      setError("");
     } catch (err: unknown) {
       if (isMounted.current) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        setError(errorMessage || 'Failed to load servers');
-        console.error('Error fetching servers:', err);
+        setError(errorMessage || "Failed to load servers");
+        console.error("Error fetching servers:", err);
       }
     } finally {
-      if (isMounted.current && showLoading) {
+      if (showLoading) {
         setIsLoading(false);
       }
     }
@@ -64,31 +61,31 @@ export default function Dashboard() {
   useEffect(() => {
     // Initial fetch
     fetchServers(true);
-    
+
     // Set up polling interval for server updates - 30 seconds
     pollingInterval.current = setInterval(() => {
       // Only poll if the page is visible
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         fetchServers(false);
       }
     }, 30000); // Poll every 30 seconds instead of 10
-    
+
     // Handle visibility change events to refresh data when tab becomes visible
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         fetchServers(false);
       }
     };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     // Clean up interval and event listener on unmount
     return () => {
       isMounted.current = false;
       if (pollingInterval.current) {
         clearInterval(pollingInterval.current);
       }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [fetchServers]);
 
@@ -111,10 +108,10 @@ export default function Dashboard() {
               )}
             </div>
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={() => fetchServers(true)}
                 disabled={isLoading}
-                className="btn btn-secondary" 
+                className="btn btn-secondary"
                 aria-label="Refresh servers"
               >
                 Refresh
@@ -123,7 +120,7 @@ export default function Dashboard() {
                 href="/dashboard/create"
                 className="btn btn-primary flex items-center gap-2"
               >
-                <FaPlus />
+                <Plus />
                 New Server
               </Link>
             </div>
@@ -140,8 +137,8 @@ export default function Dashboard() {
               className="text-red-400 bg-red-500/20 text-center p-6 glass-card flex flex-col items-center"
             >
               <p className="mb-4">{error}</p>
-              <button 
-                onClick={() => fetchServers(true)} 
+              <button
+                onClick={() => fetchServers(true)}
                 className="btn btn-secondary mt-2"
               >
                 Try Again
@@ -166,7 +163,9 @@ export default function Dashboard() {
                   >
                     <ServerCard
                       {...server}
-                      onClick={() => window.location.href = `/dashboard/server/${server.name}`}
+                      onClick={() =>
+                        (window.location.href = `/dashboard/server/${server.name}`)
+                      }
                     />
                   </motion.div>
                 ))}
@@ -180,13 +179,17 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="text-center py-16 glass-card"
             >
-              <h3 className="text-2xl font-semibold text-white mb-4">No Servers Yet</h3>
-              <p className="text-white/60 mb-8">Create your first Minecraft server to get started!</p>
+              <h3 className="text-2xl font-semibold text-white mb-4">
+                No Servers Yet
+              </h3>
+              <p className="text-white/60 mb-8">
+                Create your first Minecraft server to get started!
+              </p>
               <Link
                 href="/dashboard/create"
                 className="btn btn-primary inline-flex items-center gap-2"
               >
-                <FaPlus />
+                <Plus />
                 Create Server
               </Link>
             </motion.div>

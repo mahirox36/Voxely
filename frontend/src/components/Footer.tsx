@@ -1,9 +1,22 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { FaGithub, FaDiscord, FaHeart } from 'react-icons/fa';
+import { Heart } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { FaGithub, FaDiscord } from 'react-icons/fa';
+
 
 export default function Footer() {
+  // Check if we are in page / dashboard/server/[name] and if yes hid the footer
+  const [isServerPage, setIsServerPage] = useState(false);
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsServerPage(window.location.pathname.startsWith('/dashboard/server/'));
+    }
+  }, []);
+
+  if (isServerPage) return null;
   return (
     <motion.footer
       initial={{ opacity: 0 }}
@@ -24,7 +37,7 @@ export default function Footer() {
 
           <div className="flex items-center gap-6">
             <a
-              href="https://github.com/yourusername/Voxely"
+              href="https://github.com/mahirox36/Voxely"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white/60 hover:text-white transition-colors"
@@ -32,7 +45,7 @@ export default function Footer() {
               <FaGithub size={24} />
             </a>
             <a
-              href="https://discord.gg/yourdiscord"
+              href="https://discord.gg/a85rPNbGhn"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white/60 hover:text-white transition-colors"
@@ -44,7 +57,7 @@ export default function Footer() {
 
         <div className="mt-8 pt-4 border-t border-white/10">
           <p className="text-center text-white/60 flex items-center justify-center gap-2">
-            Made with <FaHeart className="text-pink-500" /> by Mahiro & Xorg
+            Made with <Heart className="text-pink-500" /> by MahiroX36
           </p>
         </div>
       </div>

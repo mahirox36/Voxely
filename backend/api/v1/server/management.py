@@ -1,5 +1,7 @@
+from datetime import datetime
 import json
 import logging
+import os
 from fastapi import (
     APIRouter,
     Depends,
@@ -15,6 +17,8 @@ from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
 import asyncio
 import time
+
+from watchfiles import awatch
 from ..auth import get_current_user
 from modules.servers import Server, ServerType, get_servers
 from modules.jar import MinecraftServerDownloader
@@ -22,7 +26,6 @@ from .utils import get_server_instance, process_server
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["management"])
-
 
 
 class ServerResponse(BaseModel):
@@ -65,7 +68,11 @@ def format_console_message(message: str, message_type: str | None = None):
             case _:
                 message_type = "default"
 
-    return {"text": message, "type": message_type, "timestamp": time.strftime("%H:%M:%S")}
+    return {
+        "text": message,
+        "type": message_type,
+        "timestamp": time.strftime("%H:%M:%S"),
+    }
 
 
 @router.get("/get", response_model=List[ServerResponse])
@@ -109,7 +116,8 @@ async def get_available_versions(request: Request):
 
 
 @router.post("/create", status_code=201)
-async def create_server(request: Request,
+async def create_server(
+    request: Request,
     name: str = Form(...),
     type: str = Form(...),
     version: str = Form(...),
@@ -117,7 +125,7 @@ async def create_server(request: Request,
     maxRam: int = Form(...),
     port: int = Form(...),
     maxPlayers: int = Form(...),
-    jar_file: Optional[UploadFile] = File(None)  # optional file
+    jar_file: Optional[UploadFile] = File(None),  # optional file
 ):
     """Create a new Minecraft server"""
     current_user = await get_current_user(request)
@@ -135,7 +143,7 @@ async def create_server(request: Request,
             file_location = f"versions/{jar_file.filename}"
             with open(file_location, "wb") as f:
                 f.write(await jar_file.read())
-            jar  = file_location
+            jar = file_location
 
         server = await Server.init(
             name=name,
@@ -145,7 +153,7 @@ async def create_server(request: Request,
             max_ram=maxRam,
             port=port,
             players_limit=maxPlayers,
-            jar=jar
+            jar=jar,
         )
 
         return {"message": "Server created successfully", "needsEulaAcceptance": True}
@@ -158,7 +166,7 @@ HEARTBEAT_INTERVAL = 15
 
 @router.websocket("/ws/{server_name}")
 async def websocket_server(websocket: WebSocket, server_name: str):
-    """WebSocket endpoint for real-time conv progress"""
+    """WebSocket endpoint for real-time console + file updates"""
     current_user = await get_current_user(websocket)  # type: ignore
     await websocket.accept()
     server = await get_server_instance(server_name)
@@ -166,14 +174,8 @@ async def websocket_server(websocket: WebSocket, server_name: str):
 
     def accepted_eula():
         eula_path = server.path / "eula.txt"
-        
-        if not eula_path.exists():
-            return False
+        return eula_path.exists()
 
-        with open(eula_path, "r") as f:
-            content = f.read()
-            return True
-    
     async def send_to_websocket(message: str):
         try:
             formatted_message = format_console_message(message)
@@ -183,6 +185,7 @@ async def websocket_server(websocket: WebSocket, server_name: str):
 
     server.set_output_callback(send_to_websocket)
 
+    # Send recent logs
     if hasattr(server, "logs") and server.logs:
         for line in server.logs[-100:]:
             formatted_line = format_console_message(line)
@@ -200,7 +203,6 @@ async def websocket_server(websocket: WebSocket, server_name: str):
 
     async def get_info():
         metrics = await server.get_metrics(True)
-
         return {
             "name": server.name,
             "status": server.status,
@@ -221,35 +223,19 @@ async def websocket_server(websocket: WebSocket, server_name: str):
                 break
             await asyncio.sleep(HEARTBEAT_INTERVAL)
 
-    async def get_server():
-        """Get details for a specific server"""
-
+    async def get_server_info():
         try:
-
             await websocket.send_json({"type": "info", "data": await get_info()})
         except Exception as e:
-
             await websocket.send_json({"type": "error", "data": str(e)})
 
     async def start_server():
         try:
-
             if server.status == "online":
                 await websocket.send_json(
-                    {"type": "error", "data": "server is already running"}
+                    {"type": "error", "data": "Server is already running"}
                 )
             await server.start()
-
-        except Exception as e:
-            await websocket.send_json({"type": "error", "data": str(e)})
-
-    async def send_command(command: str):
-        try:
-            if server.status != "online":
-                await websocket.send_json(
-                    {"type": "error", "data": "server is not running"}
-                )
-            await server.send_command(command)
         except Exception as e:
             await websocket.send_json({"type": "error", "data": str(e)})
 
@@ -257,7 +243,7 @@ async def websocket_server(websocket: WebSocket, server_name: str):
         try:
             if server.status == "offline":
                 await websocket.send_json(
-                    {"type": "error", "data": "server is not running"}
+                    {"type": "error", "data": "Server is not running"}
                 )
             await server.stop()
         except Exception as e:
@@ -269,13 +255,71 @@ async def websocket_server(websocket: WebSocket, server_name: str):
         except Exception as e:
             await websocket.send_json({"type": "error", "data": str(e)})
 
-    async def handle_messages():
+    async def send_command(command: str):
+        try:
+            if server.status != "online":
+                await websocket.send_json(
+                    {"type": "error", "data": "Server is not running"}
+                )
+            await server.send_command(command)
+        except Exception as e:
+            await websocket.send_json({"type": "error", "data": str(e)})
 
+    async def watch_files():
+        base_path =  server.path
+        if not base_path.exists():
+            await websocket.send_json({"type": "error", "data": "Path not found"})
+            return
+
+        async def list_files():
+            locked_files = ["server.json", "server.log", "server.jar", "eula.txt"]
+            files = []
+            for entry in base_path.rglob("*"):
+                if entry.name in locked_files:
+                    continue
+                try:
+                    stat = entry.stat()
+                    files.append(
+                        {
+                            "path": str(entry.relative_to(server.path)).replace("\\", "/"),
+                            "name": entry.name,
+                            "type": "directory" if entry.is_dir() else "file",
+                            "size": stat.st_size if not entry.is_dir() else None,
+                            "modified": datetime.fromtimestamp(
+                                stat.st_mtime
+                            ).isoformat(),
+                        }
+                    )
+                except Exception as e:
+                    print(f"Error processing {entry}: {e}")
+            return sorted(files, key=lambda x: (x["type"] == "file", x["name"].lower()))
+
+        # Send initial list
+        await websocket.send_json({"type": "file_init", "data": await list_files()})
+
+        # Watch directory for changes
+        async for changes in awatch(base_path):
+            events = []
+            for change_type, file_path in changes:
+                events.append(
+                    {
+                        "event": change_type.name,
+                        "path": os.path.relpath(file_path, server.path),
+                    }
+                )
+            await websocket.send_json(
+                {
+                    "type": "file_update",
+                    "changes": events,
+                    "data": await list_files(),
+                }
+            )
+
+    async def handle_messages():
         try:
             while True:
                 data = await websocket.receive_json()
                 msg_type = data.get("action", "")
-
                 if msg_type == "pong":
                     continue
                 elif msg_type == "start":
@@ -288,33 +332,28 @@ async def websocket_server(websocket: WebSocket, server_name: str):
                     await send_command(data.get("data", ""))
                 else:
                     continue
-
         except WebSocketDisconnect:
             logger.info("Client disconnected")
         except Exception as e:
             logger.warning(f"Message handling error: {e}")
 
-    # Start concurrent tasks
-    
-    
-    
-    
+    # --- Start tasks ---
     heartbeat_task = asyncio.create_task(send_heartbeat())
     message_task = asyncio.create_task(handle_messages())
+    watch_task = asyncio.create_task(watch_files())
 
     try:
-        await get_server()
-        
+        await get_server_info()
+
         if not accepted_eula():
             await websocket.send_json({"type": "need_eula"})
-        
+
         logger.info("WebSocket connection established")
         done, pending = await asyncio.wait(
             [heartbeat_task, message_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Cancel remaining tasks
         for task in pending:
             task.cancel()
             try:
@@ -324,8 +363,8 @@ async def websocket_server(websocket: WebSocket, server_name: str):
 
     except Exception as e:
         logger.warning(f"WebSocket error: {e}")
+
     finally:
-        # Cleanup
         for task in [heartbeat_task, message_task]:
             if not task.done():
                 task.cancel()

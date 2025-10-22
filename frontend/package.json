@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@react-icons/all-files": "^4.1.0",
+    "axios": "^1.12.2",
     "framer-motion": "^12.7.4",
+    "lucide-react": "^0.546.0",
     "next": "15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

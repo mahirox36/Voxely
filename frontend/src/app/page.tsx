@@ -3,29 +3,29 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
-import { FaServer, FaRocket, FaShieldAlt, FaCogs } from "react-icons/fa";
+import { Server, Rocket, Shield, Settings } from "lucide-react";
 
 const features = [
   {
-    icon: <FaServer className="text-4xl text-pink-500" />,
+    icon: <Server className="text-4xl text-pink-500" />,
     title: "Easy Server Creation",
     description:
       "Create Minecraft servers in just a few clicks. Support for Vanilla, Paper, Fabric, and more.",
   },
   {
-    icon: <FaRocket className="text-4xl text-blue-500" />,
+    icon: <Rocket className="text-4xl text-blue-500" />,
     title: "Instant Deployment",
     description:
       "Your server will be up and running in seconds with optimized performance settings.",
   },
   {
-    icon: <FaShieldAlt className="text-4xl text-purple-500" />,
+    icon: <Shield className="text-4xl text-purple-500" />,
     title: "Secure Management",
     description:
       "Full control over your servers with secure authentication and user management.",
   },
   {
-    icon: <FaCogs className="text-4xl text-green-500" />,
+    icon: <Settings className="text-4xl text-green-500" />,
     title: "Advanced Controls",
     description:
       "Monitor performance, manage players, and control your server through an intuitive interface.",

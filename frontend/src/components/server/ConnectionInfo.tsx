@@ -1,4 +1,4 @@
-import { FaNetworkWired } from "react-icons/fa";
+import { Network } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface ConnectionInfoProps {
@@ -22,7 +22,7 @@ export const ConnectionInfo = ({ ip, port }: ConnectionInfoProps) => {
         <div>
           <p className="text-white/60 text-sm mb-1">Local Address</p>
           <div className="flex items-center bg-white/5 p-3 rounded-lg">
-            <FaNetworkWired className="text-blue-400 mr-3" />
+            <Network className="text-blue-400 mr-3" />
             <p className="text-white font-mono">{ip?.private || `localhost:${port}`}</p>
           </div>
         </div>
@@ -30,7 +30,7 @@ export const ConnectionInfo = ({ ip, port }: ConnectionInfoProps) => {
         <div>
           <p className="text-white/60 text-sm mb-1">External Address (Public)</p>
           <div className="flex items-center bg-white/5 p-3 rounded-lg">
-            <FaNetworkWired className="text-green-400 mr-3" />
+            <Network className="text-green-400 mr-3" />
             <p className="text-white font-mono">{ip?.public || "Not available"}</p>
           </div>
         </div>
@@ -38,7 +38,7 @@ export const ConnectionInfo = ({ ip, port }: ConnectionInfoProps) => {
         <div>
           <p className="text-white/60 text-sm mb-1">Port</p>
           <div className="flex items-center bg-white/5 p-3 rounded-lg">
-            <FaNetworkWired className="text-purple-400 mr-3" />
+            <Network className="text-purple-400 mr-3" />
             <p className="text-white font-mono">{port}</p>
           </div>
         </div>

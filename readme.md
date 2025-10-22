@@ -28,6 +28,8 @@ Voxely is your friendly companion for hosting and managing Minecraft servers on 
   - Plugin management system
   - Automated backups
   - Server settings customization
+  - Players management
+  - Config Editor
   - Multiple server types support (Paper, Vanilla, Fabric)
 
 - 🎨 **Modern Web Interface**
@@ -40,7 +42,7 @@ Voxely is your friendly companion for hosting and managing Minecraft servers on 
 
 - 🖥️ **Operating System**: Windows, Linux, or MacOS
 - ☕ **Java**: Java 17 or higher
-- 🐍 **Python**: Python 3.10 or higher
+- 🐍 **Python**: Python 3.12 or higher
 - 🌐 **Node.js**: v18 or higher (for the web interface)
 
 ## 📦 Installation

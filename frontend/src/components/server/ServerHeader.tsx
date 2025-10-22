@@ -5,11 +5,9 @@ interface ServerHeaderProps {
   status: string;
   type: string;
   version: string;
-  actionInProgress: string;
   isOnline: boolean;
   isStarting: boolean;
   isStopping: boolean;
-  isRestarting: boolean;
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
@@ -21,11 +19,9 @@ export const ServerHeader = ({
   status,
   type,
   version,
-  actionInProgress,
   isOnline,
   isStarting,
   isStopping,
-  isRestarting,
   onStart,
   onStop,
   onRestart,
@@ -45,10 +41,12 @@ export const ServerHeader = ({
     }
   };
 
-  const getStatusDisplay = (status: string, actionInProgress: string) => {
-    if (actionInProgress === "starting") return "Starting";
-    if (actionInProgress === "stopping") return "Stopping";
-    if (actionInProgress === "restarting") return "Restarting";
+  const getStatusDisplay = (status: string) => {
+    // if (actionInProgress === "starting") return "Starting";
+    // if (actionInProgress === "stopping") return "Stopping";
+    // if (actionInProgress === "online") return "Online";
+    // if (actionInProgress === "offline") return "Offline";
+    // if (actionInProgress === "restarting") return "Restarting";
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
@@ -63,8 +61,12 @@ export const ServerHeader = ({
         </button>
         <h1 className="text-4xl font-bold text-white mt-2">
           {name}
-          <span className={`ml-3 text-sm px-2 py-1 rounded ${getStatusColor(status)}`}>
-            {getStatusDisplay(status, actionInProgress)}
+          <span
+            className={`ml-3 text-sm px-2 py-1 rounded ${getStatusColor(
+              status
+            )}`}
+          >
+            {getStatusDisplay(status)}
           </span>
         </h1>
         <p className="text-white/60 mt-1">
@@ -76,7 +78,6 @@ export const ServerHeader = ({
         isOnline={isOnline}
         isStarting={isStarting}
         isStopping={isStopping}
-        isRestarting={isRestarting}
         onStart={onStart}
         onStop={onStop}
         onRestart={onRestart}

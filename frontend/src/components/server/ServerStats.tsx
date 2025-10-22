@@ -1,4 +1,4 @@
-import { FaMicrochip, FaMemory, FaUsers, FaClock } from "react-icons/fa";
+import { Microchip, MemoryStick, Users, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface ServerStatsProps {
@@ -21,7 +21,7 @@ export const ServerStats = ({ metrics }: ServerStatsProps) => {
       <h2 className="text-xl font-semibold text-white mb-4">Server Stats</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white/5 p-4 rounded-lg flex items-center">
-          <FaMicrochip className="text-blue-400 text-2xl mr-3" />
+          <Microchip className="text-blue-400 text-2xl mr-3" />
           <div>
             <p className="text-white/60 text-sm">CPU Usage</p>
             <p className="text-white text-lg font-semibold">{metrics.cpu_usage}</p>
@@ -29,7 +29,7 @@ export const ServerStats = ({ metrics }: ServerStatsProps) => {
         </div>
 
         <div className="bg-white/5 p-4 rounded-lg flex items-center">
-          <FaMemory className="text-purple-400 text-2xl mr-3" />
+          <MemoryStick className="text-purple-400 text-2xl mr-3" />
           <div>
             <p className="text-white/60 text-sm">Memory Usage</p>
             <p className="text-white text-lg font-semibold">{metrics.memory_usage}</p>
@@ -37,7 +37,7 @@ export const ServerStats = ({ metrics }: ServerStatsProps) => {
         </div>
 
         <div className="bg-white/5 p-4 rounded-lg flex items-center">
-          <FaUsers className="text-green-400 text-2xl mr-3" />
+          <Users className="text-green-400 text-2xl mr-3" />
           <div>
             <p className="text-white/60 text-sm">Players</p>
             <p className="text-white text-lg font-semibold">{metrics.player_count}</p>
@@ -45,7 +45,7 @@ export const ServerStats = ({ metrics }: ServerStatsProps) => {
         </div>
 
         <div className="bg-white/5 p-4 rounded-lg flex items-center">
-          <FaClock className="text-pink-400 text-2xl mr-3" />
+          <Clock className="text-pink-400 text-2xl mr-3" />
           <div>
             <p className="text-white/60 text-sm">Uptime</p>
             <p className="text-white text-lg font-semibold">{metrics.uptime}</p>

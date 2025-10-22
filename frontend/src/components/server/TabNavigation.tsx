@@ -8,7 +8,9 @@ export const TabNavigation = ({ activeTab, onTabChange }: TabNavigationProps) =>
     'overview',
     'console',
     'files',
-    'plugins',
+    'players',
+    'config',
+    'plugins/Mods',
     'backups',
     'logs',
     'settings'
