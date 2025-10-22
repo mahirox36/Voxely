@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from . import management, files, plugins, backups, logs, settings, console
+from . import management, files, plugins, backups, logs, settings
 
 router = APIRouter(prefix="/servers", tags=["servers"])
 
@@ -10,4 +10,3 @@ router.include_router(plugins.router)
 router.include_router(backups.router)
 router.include_router(logs.router)
 router.include_router(settings.router)
-router.include_router(console.router)

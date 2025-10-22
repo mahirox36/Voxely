@@ -20,7 +20,7 @@ async def list_files(request: Request, server_name: str, path: str = ""):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         base_path = server.path / path if path else server.path
         
         if not base_path.exists():

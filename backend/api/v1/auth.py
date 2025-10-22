@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 import json
 import os
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from typing import Optional, Union
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -95,7 +95,11 @@ async def get_current_user(request: Request) -> User:
     )
     
     # Get the Authorization header
-    auth_header = request.headers.get("Authorization")
+    if isinstance(request, WebSocket):
+        auth_header = request.query_params.get("token")
+    else:
+        auth_header = request.headers.get("Authorization")
+    
     if not auth_header:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

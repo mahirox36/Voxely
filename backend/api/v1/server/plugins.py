@@ -18,7 +18,7 @@ async def list_plugins(request: Request, server_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         plugins_dir = server.path / "plugins"
         
         if not plugins_dir.exists():

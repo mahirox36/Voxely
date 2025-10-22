@@ -12,7 +12,6 @@ from pathlib import Path
 # Set up a dedicated logger for the JAR module
 logging.basicConfig(level=logging.INFO)
 jar_logger = logging.getLogger("jar_downloader")
-jar_logger.setLevel(logging.DEBUG)
 
 # Create a file handler for the jar downloader
 os.makedirs("logs", exist_ok=True)
@@ -25,6 +24,7 @@ class ServerType(StrEnum):
     FABRIC = "fabric"
     PAPER = "paper"
     PURPUR = "purpur"
+    CUSTOM = "custom"
 
 class MinecraftServerDownloader:
     def __init__(self):
@@ -318,56 +318,6 @@ class MinecraftServerDownloader:
             return result
         except Exception as e:
             jar_logger.error(f"Error in downloadFabric: {str(e)}")
-            return False
-
-    def get_forge_versions(self):
-        """Get all available Forge versions."""
-        jar_logger.info("Getting Forge versions")
-        cache_data = self._get_cached_data('forge_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached Forge versions")
-            return cache_data
-
-        try:
-            response = requests.get(self.forge_api_url)
-            if response.status_code == 200:
-                data = response.json()
-                versions = [v.split('-')[0] for v in data['promos'].keys() if 'recommended' in v]
-                jar_logger.info(f"Retrieved {len(versions)} Forge versions")
-                self._save_cache('forge_versions', versions)
-                return versions
-            else:
-                jar_logger.error(f"Failed to fetch Forge versions. Status code: {response.status_code}")
-                return []
-        except Exception as e:
-            jar_logger.error(f"Error fetching Forge versions: {str(e)}")
-            return []
-
-    def downloadForge(self, version: str, build_type='recommended'):
-        """Download Forge server jar. build_type can be 'recommended' or 'latest'"""
-        jar_logger.info(f"Downloading Forge version {version} (build_type={build_type})")
-        try:
-            response = requests.get(self.forge_api_url)
-            if response.status_code != 200:
-                jar_logger.error("Failed to fetch Forge versions")
-                return False
-
-            data = response.json()
-            key = f"{version}-{build_type}"
-            if key not in data['promos']:
-                jar_logger.error(f"No {build_type} Forge build found for version {version}")
-                return False
-
-            build_number = data['promos'][key]
-            filename = f"versions/forge-{version}-{build_number}.jar"
-            
-            installer_url = f"https://maven.minecraftforge.net/net/minecraftforge/forge/{version}-{build_number}/forge-{version}-{build_number}-installer.jar"
-            jar_logger.debug(f"Downloading from: {installer_url}")
-            result = self._download_with_progress(installer_url, filename)
-            jar_logger.info(f"Download result: {result}")
-            return result
-        except Exception as e:
-            jar_logger.error(f"Error in downloadForge: {str(e)}")
             return False
 
     def get_purpur_versions(self):

@@ -19,7 +19,7 @@ async def list_logs(request: Request, server_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         logs_dir = server.path / "logs"
         
         if not logs_dir.exists():
@@ -49,7 +49,7 @@ async def get_log_content(request: Request, server_name: str, log_name: str, las
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         log_file = server.path / "logs" / log_name
         
         if not log_file.exists():

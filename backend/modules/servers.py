@@ -1,9 +1,12 @@
+import asyncio
+from asyncio.subprocess import Process
 from datetime import datetime
 from enum import StrEnum
 import os
 import re
 import threading
 from typing import List, Dict, Optional, Any, Union
+from fastapi import WebSocket
 from mcrcon import MCRcon
 import time
 import psutil
@@ -12,7 +15,6 @@ import json
 import subprocess
 import socket
 from .jar import MinecraftServerDownloader
-import asyncio
 from .serverProperties import ServerProperties
 from pathlib import Path
 import logging
@@ -47,9 +49,6 @@ class ServerStatus(StrEnum):
     OFFLINE = "offline"
     STARTING = "starting"
     STOPPING = "stopping"
-
-
-
 
 
 def get_servers(space: bool = False, use_cache: bool = True):
@@ -182,6 +181,7 @@ class Server:
         self._lock = threading.Lock()
         self._shutdown_event = threading.Event()
         self.started_at = None  # Initialize started_at attribute here
+        self.websockets: List[WebSocket] = []
         match type:
             case ServerType.PAPER | ServerType.PURPUR:
                 self.addon_path = self.path / "plugins"
@@ -190,23 +190,37 @@ class Server:
             case _:
                 self.addon_path = None
 
-        serverExists = self.path.exists()
+        self.serverExists = self.path.exists()
         # Setup logger for this server instance
         self.logger = self._setup_logger()
         self.logger.info(f"Initializing server {name} (type={type}, version={version})")
 
-        if serverExists:
-            self.logger.info(f"Loading existing server from {self.path}")
-            self._load_existing_server()
-        else:
-            self.logger.info(f"Creating new server at {self.path}")
-            self._create_new_server(
-                type, version, min_ram, max_ram, port, players_limit
-            )
-
         self.Properties = ServerProperties(self.path / "server.properties")
         self._rcon: Optional[MCRcon] = None
         self._rcon_lock = threading.Lock()
+        self.process: Optional[Process] = None
+
+    @classmethod
+    async def init(
+        cls,
+        name: str,
+        type: ServerType = ServerType.PAPER,
+        version: str = "1.21.1",
+        min_ram: int = 1024,
+        max_ram: int = 1024,
+        port: int = 25565,
+        players_limit: int = 20,
+        jar: Optional[str] = None
+    ):
+        self = cls(name, type, version, min_ram, max_ram, port, players_limit)
+        if not self.serverExists:
+            self.logger.info(f"Creating new server at {self.path}")
+            await self._create_new_server(
+                type, version, min_ram, max_ram, port, players_limit, jar
+            )
+        else:
+            await self._load_existing_server()
+        return self
 
     def _setup_logger(self) -> logging.Logger:
         logger = logging.getLogger(f"server.{self.name}")
@@ -244,7 +258,7 @@ class Server:
 
         # Prevent propagation to parent loggers to avoid duplicate logging
         logger.propagate = False
-        
+
         return logger
 
     @contextmanager
@@ -254,9 +268,9 @@ class Server:
                 if self._rcon is None:
                     self.logger.debug("Creating new RCON connection")
                     self._rcon = MCRcon(
-                        self.ip["private"].split(":")[0], 
-                        "sdu923rf873bdf4iu53aw2", 
-                        port=25575
+                        self.ip["private"].split(":")[0],
+                        "sdu923rf873bdf4iu53aw2",
+                        port=25575,
                     )
                     self._rcon.connect()
                 self.logger.debug("Using existing RCON connection")
@@ -268,16 +282,17 @@ class Server:
                     try:
                         self._rcon.disconnect()
                     except Exception as disconnect_error:
-                        self.logger.error(f"Error during RCON disconnect: {disconnect_error}")
+                        self.logger.error(
+                            f"Error during RCON disconnect: {disconnect_error}"
+                        )
                     self._rcon = None
                 raise
 
-
-    def backup_server(self) -> Optional[str]:
+    async def backup_server(self) -> Optional[str]:
         self.logger.info("Starting server backup")
         if self.status != ServerStatus.OFFLINE:
             self.logger.debug("Server is online, saving world before backup")
-            self.send_command("save-all")
+            await self.send_command("save-all")
             time.sleep(2)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -293,11 +308,11 @@ class Server:
             self.logger.error(f"Backup failed: {e}")
             return None
 
-    def restore_backup(self, backup_file: str) -> bool:
+    async def restore_backup(self, backup_file: str) -> bool:
         self.logger.info(f"Attempting to restore backup from {backup_file}")
         if self.status != ServerStatus.OFFLINE:
             self.logger.debug("Server is online, stopping before restore")
-            self.stop()
+            await self.stop()
 
         try:
             backup_path = Path(backup_file)
@@ -325,7 +340,7 @@ class Server:
                 with self._lock:
                     self._metrics.cpu_usage = metrics["cpu"]
                     self._metrics.memory_usage = metrics["memory"]
-                    self._metrics.player_count = self.lengthPlayers
+                    self._metrics.player_count = await self.lengthPlayers
 
                     try:
                         with self.rcon_connection() as mcr:
@@ -338,20 +353,23 @@ class Server:
                                     self.logger.debug(f"TPS: {self._metrics.tps}")
                     except Exception as e:
                         self.logger.debug(f"Failed to get TPS: {e}")
+            
             await asyncio.sleep(5)
 
-    async def get_metrics(self, as_string: bool = False) -> Union[ServerMetrics, Dict[str, str]]:
+    async def get_metrics(
+        self, as_string: bool = False
+    ) -> Union[ServerMetrics, Dict[str, str]]:
         """
         Get current server metrics (CPU, memory, TPS, player count)
-        
+
         Args:
             as_string: If True, returns values as formatted strings instead of raw numbers
-            
+
         Returns:
             ServerMetrics object or dictionary with metrics
         """
         self.logger.debug("Getting server metrics")
-        
+
         try:
             # Update metrics if server is online
             if self.status == ServerStatus.ONLINE:
@@ -360,28 +378,42 @@ class Server:
                 with self._lock:
                     self._metrics.cpu_usage = usage["cpu"]
                     self._metrics.memory_usage = usage["memory"]
-                    self._metrics.player_count = self.lengthPlayers if hasattr(self, 'lengthPlayers') else 0
-                    
+                    self._metrics.player_count = await self.lengthPlayers
+
                     # Calculate and format uptime
                     if self.started_at:
-                        uptime_seconds = (datetime.now() - self.started_at).total_seconds()
+                        uptime_seconds = (
+                            datetime.now() - self.started_at
+                        ).total_seconds()
                         hours, remainder = divmod(int(uptime_seconds), 3600)
                         minutes, seconds = divmod(remainder, 60)
                         self._metrics.uptime = f"{hours}h {minutes}m {seconds}s"
                     else:
                         self._metrics.uptime = "Unknown"
-            
+
             # Return metrics in requested format
             if as_string:
                 return {
                     "cpu_usage": f"{self._metrics.cpu_usage:.1f}%",
                     "memory_usage": f"{self._metrics.memory_usage:.1f} MB",
-                    "player_count": f"{self._metrics.player_count}/{self.players_limit}" if hasattr(self, 'players_limit') else "0/0",
-                    "uptime": self._metrics.uptime if self.status == ServerStatus.ONLINE else "Offline",
-                    "tps": f"{self._metrics.tps:.1f}" if self.status == ServerStatus.ONLINE else "N/A"
+                    "player_count": (
+                        f"{self._metrics.player_count}/{self.players_limit}"
+                        if hasattr(self, "players_limit")
+                        else "0/0"
+                    ),
+                    "uptime": (
+                        self._metrics.uptime
+                        if self.status == ServerStatus.ONLINE
+                        else "Offline"
+                    ),
+                    "tps": (
+                        f"{self._metrics.tps:.1f}"
+                        if self.status == ServerStatus.ONLINE
+                        else "N/A"
+                    ),
                 }
             return self._metrics
-            
+
         except Exception as e:
             self.logger.error(f"Error getting metrics: {e}")
             # Return default metrics on error
@@ -389,13 +421,17 @@ class Server:
                 return {
                     "cpu_usage": "0.0%",
                     "memory_usage": "0.0 MB",
-                    "player_count": f"0/{self.players_limit}" if hasattr(self, 'players_limit') else "0/0",
+                    "player_count": (
+                        f"0/{self.players_limit}"
+                        if hasattr(self, "players_limit")
+                        else "0/0"
+                    ),
                     "uptime": "Error",
-                    "tps": "N/A"
+                    "tps": "N/A",
                 }
             return ServerMetrics()
 
-    def _load_existing_server(self):
+    async def _load_existing_server(self):
         # Check if server.json exists before trying to load it
         server_json_path = self.path / "server.json"
 
@@ -461,10 +497,12 @@ class Server:
         try:
             self.logger.debug(f"Reading server.json from {server_json_path}")
             json_data = self._safe_load_json(server_json_path)
-            
+
             # If json_data is None, the file was corrupted but we attempted repair
             if json_data is None:
-                self.logger.warning(f"Could not load or repair server.json for {self.name}, using default values")
+                self.logger.warning(
+                    f"Could not load or repair server.json for {self.name}, using default values"
+                )
                 # Set default values similar to when the file doesn't exist
                 self.created_at = datetime.now()
                 self.status = ServerStatus.OFFLINE
@@ -476,7 +514,7 @@ class Server:
                 self.max_ram = 2048
                 self.port = 25565
                 self.started_at = None
-                
+
                 # Save default configuration
                 self.data = {
                     "name": self.name,
@@ -499,7 +537,7 @@ class Server:
                 }
                 self._save_server_data()
                 return
-            
+
             # Successfully loaded JSON data
             self.data = json_data
 
@@ -536,12 +574,12 @@ class Server:
                     else None
                 )
 
-            if self.is_server_online == False:
+            if await self.is_server_online == False:
                 self.logger.debug("Server is not running, updating status to OFFLINE")
                 self.data["status"] = ServerStatus.OFFLINE
                 self.logs = []
                 self.started_at = None
-                self._save_state()
+                await self._save_state()
             self.status = ServerStatus.OFFLINE
 
             # If we got here, it's a valid server
@@ -556,14 +594,14 @@ class Server:
             # Mark as invalid if we couldn't load the data
             if not (has_jar or has_eula):
                 self.is_valid_server = False
-                
+
     def _safe_load_json(self, file_path):
         """
         Safely load JSON data from a file with error recovery mechanisms.
-        
+
         Args:
             file_path: Path to the JSON file
-            
+
         Returns:
             Parsed JSON data as a dictionary or None if unrecoverable
         """
@@ -572,24 +610,24 @@ class Server:
                 return json.load(f)
         except json.JSONDecodeError as e:
             self.logger.error(f"Error parsing JSON in {file_path}: {e}")
-            
+
             # Attempt to repair the JSON file
             backup_path = f"{file_path}.bak"
             self.logger.info(f"Creating backup of corrupted file at {backup_path}")
             try:
                 shutil.copy2(file_path, backup_path)
-                
+
                 # Read the raw content
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                
+
                 # Try to fix common JSON issues
                 repaired_content = self._repair_json(content, e)
                 if repaired_content:
                     # Save the repaired content
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(repaired_content)
-                    
+
                     # Try to parse again
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
@@ -598,65 +636,69 @@ class Server:
                         self.logger.error(f"Failed to parse JSON after repair: {e2}")
             except Exception as e3:
                 self.logger.error(f"Error during JSON repair attempt: {e3}")
-                
+
             return None
         except Exception as e:
             self.logger.error(f"Unexpected error reading {file_path}: {e}")
             return None
-            
+
     def _repair_json(self, content, error):
         """
         Attempt to repair corrupted JSON content
-        
+
         Args:
             content: The JSON string content
             error: The JSONDecodeError that occurred
-            
+
         Returns:
             Repaired JSON string or None if repair failed
         """
         self.logger.info(f"Attempting to repair JSON content at position {error.pos}")
-        
+
         try:
             # Convert linebreak style to consistent format
-            content = content.replace('\r\n', '\n')
-            
+            content = content.replace("\r\n", "\n")
+
             # Common repair strategies
-            
+
             # 1. Fix missing closing braces/brackets
-            if "Expecting ',' delimiter" in str(error) or "Expecting property name" in str(error):
+            if "Expecting ',' delimiter" in str(
+                error
+            ) or "Expecting property name" in str(error):
                 # Count opening and closing braces/brackets
-                open_braces = content.count('{')
-                close_braces = content.count('}')
-                open_brackets = content.count('[')
-                close_brackets = content.count(']')
-                
+                open_braces = content.count("{")
+                close_braces = content.count("}")
+                open_brackets = content.count("[")
+                close_brackets = content.count("]")
+
                 # Add missing closing characters
                 if open_braces > close_braces:
-                    content = content.rstrip() + ('}' * (open_braces - close_braces))
+                    content = content.rstrip() + ("}" * (open_braces - close_braces))
                 if open_brackets > close_brackets:
-                    content = content.rstrip() + (']' * (open_brackets - close_brackets))
-            
+                    content = content.rstrip() + (
+                        "]" * (open_brackets - close_brackets)
+                    )
+
             # 2. Fix trailing commas
             if "Expecting property name" in str(error):
                 content = content.replace(",}", "}")
                 content = content.replace(",\n}", "\n}")
                 content = content.replace(",]", "]")
                 content = content.replace(",\n]", "\n]")
-            
+
             # 3. Fix missing quotes around property names
             if "Expecting property name enclosed in double quotes" in str(error):
-                lines = content.split('\n')
+                lines = content.split("\n")
                 for i, line in enumerate(lines):
-                    if ':' in line:
+                    if ":" in line:
                         # Find property names without quotes
-                        parts = line.split(':', 1)
+                        parts = line.split(":", 1)
                         key = parts[0].strip()
                         if not (key.startswith('"') and key.endswith('"')):
                             # Add quotes around the property name
                             lines[i] = line.replace(key, f'"{key}"', 1)
-                content = '\n'.join(lines)
-            
+                content = "\n".join(lines)
+
             # Validate the repaired content
             try:
                 json.loads(content)
@@ -664,32 +706,37 @@ class Server:
                 return content
             except json.JSONDecodeError as e:
                 self.logger.warning(f"Initial repair attempt failed: {e}")
-                
+
                 # More aggressive approach - remove the problematic line
-                if hasattr(e, 'lineno') and e.lineno > 0:
-                    lines = content.split('\n')
+                if hasattr(e, "lineno") and e.lineno > 0:
+                    lines = content.split("\n")
                     problematic_line = e.lineno - 1  # 0-based index
-                    
+
                     if 0 <= problematic_line < len(lines):
-                        self.logger.warning(f"Removing problematic line: {lines[problematic_line]}")
+                        self.logger.warning(
+                            f"Removing problematic line: {lines[problematic_line]}"
+                        )
                         del lines[problematic_line]
-                        content = '\n'.join(lines)
-                        
+                        content = "\n".join(lines)
+
                         # Try parsing again
                         try:
                             json.loads(content)
-                            self.logger.info("JSON repair successful after removing problematic line")
+                            self.logger.info(
+                                "JSON repair successful after removing problematic line"
+                            )
                             return content
                         except:
                             pass
-                
+
                 # Final attempt - create minimal valid JSON with core fields
                 try:
                     # Extract essential fields using regex patterns
                     import re
+
                     name_match = re.search(r'"name"\s*:\s*"([^"]+)"', content)
                     name = name_match.group(1) if name_match else self.name
-                    
+
                     # Create a minimal valid JSON
                     minimal_json = {
                         "name": name,
@@ -699,24 +746,24 @@ class Server:
                         "type": "paper",
                         "version": "1.20.4",
                         "path": str(self.path),
-                        "is_valid_server": True
+                        "is_valid_server": True,
                     }
-                    
+
                     self.logger.info("Created minimal valid JSON as a last resort")
                     return json.dumps(minimal_json, indent=4)
                 except Exception as e:
                     self.logger.error(f"Failed to create minimal valid JSON: {e}")
                     return None
-                    
+
         except Exception as e:
             self.logger.error(f"Error during JSON repair: {e}")
             return None
 
     @property
-    def players(self) -> List[str]:
-        return self.get_players()
+    async def players(self) -> List[str]:
+        return await self.get_players()
 
-    def _create_new_server(
+    async def _create_new_server(
         self,
         type: ServerType = ServerType.PAPER,
         version: str = "1.21.1",
@@ -724,6 +771,7 @@ class Server:
         max_ram: int = 1024,
         port: int = 25565,
         players_limit: int = 20,
+        jar: Optional[str] = None
     ):
         self.logger.info(
             f"Creating new server: type={type}, version={version}, ram={min_ram}-{max_ram}MB, port={port}"
@@ -737,13 +785,14 @@ class Server:
         self.min_ram = min_ram
         self.max_ram = max_ram
         self.port = port
+        self.jar = jar
 
         # Create the server directory
         self.path.mkdir(parents=True, exist_ok=True)
 
         # Download the server JAR file
         self.logger.info(f"Downloading JAR for {type} version {version}")
-        self.jar_path = self._download_jar(type, version)
+        self.jar_path = self._download_jar(type, version, jar)
 
         self.logger.debug(f"Download returned jar_path: {self.jar_path}")
 
@@ -772,7 +821,7 @@ class Server:
             "full_path": self.full_path,
             "jar_full_path": self.jar_full_path,
             "port": self.port,
-            "players": self.players,
+            "players": await self.players,
             "logs": self.logs,
         }
 
@@ -791,14 +840,16 @@ rcon.password=sdu923rf873bdf4iu53aw2
             )
 
     @property
-    def lengthPlayers(self):
-        return len(self.players)
+    async def lengthPlayers(self):
+        return len(await self.players)
 
-    def _download_jar(self, server_type: ServerType, version: str):
+    def _download_jar(self, server_type: ServerType, version: str, jar: Optional[str] = None):
         """Download the server JAR file for the specified type and version."""
-        self.logger.info(f"Downloading server JAR: type={server_type}, version={version}")
+        self.logger.info(
+            f"Downloading server JAR: type={server_type}, version={version}"
+        )
         downloader = MinecraftServerDownloader()
-        
+
         try:
             # Check if the JAR file already exists in the versions directory
             potential_jar_files = []
@@ -808,7 +859,9 @@ rcon.password=sdu923rf873bdf4iu53aw2
                 # Paper JAR files can have different build numbers, check for any that match the version
                 potential_jar_files = glob.glob(f"versions/paper-{version}-*.jar")
             elif server_type == ServerType.FABRIC:
-                potential_jar_files = glob.glob(f"versions/fabric-server-mc{version}-*.jar")
+                potential_jar_files = glob.glob(
+                    f"versions/fabric-server-mc{version}-*.jar"
+                )
 
             # If we found an existing JAR file, use it
             for jar_path in potential_jar_files:
@@ -819,7 +872,7 @@ rcon.password=sdu923rf873bdf4iu53aw2
                     shutil.copy2(jar_path, dest_path)
                     self.logger.info(f"Copied existing JAR to {dest_path}")
                     return dest_path
-                    
+
             # No existing JAR found, download a new one
             jar_path = None
             if server_type == ServerType.VANILLA:
@@ -831,14 +884,24 @@ rcon.password=sdu923rf873bdf4iu53aw2
             elif server_type == ServerType.FABRIC:
                 self.logger.debug(f"Downloading Fabric server JAR version {version}")
                 jar_path = downloader.downloadFabric(version)
+            elif server_type == ServerType.PURPUR:
+                self.logger.debug(f"Downloading Fabric server JAR version {version}")
+                jar_path = downloader.downloadPurpur(version)
+            elif server_type == ServerType.CUSTOM and jar:
+                self.logger.debug(f"Downloading Fabric server JAR version {version}")
+                jar_path = jar
             else:
                 self.logger.error(f"Unsupported server type: {type}")
                 return False
 
-            self.logger.debug(f"JAR download result: {jar_path} (type: {type(jar_path).__name__})")
+            self.logger.debug(
+                f"JAR download result: {jar_path} (type: {type(jar_path).__name__})"
+            )
 
             if not jar_path or not isinstance(jar_path, str):
-                self.logger.error(f"Failed to download {type} server JAR for version {version}: {jar_path}")
+                self.logger.error(
+                    f"Failed to download {type} server JAR for version {version}: {jar_path}"
+                )
                 return False
 
             # Copy JAR to server directory
@@ -852,11 +915,17 @@ rcon.password=sdu923rf873bdf4iu53aw2
                 if os.path.exists(dest_path):
                     src_size = os.path.getsize(jar_path)
                     dest_size = os.path.getsize(dest_path)
-                    self.logger.info(f"JAR file copied: source size={src_size}, destination size={dest_size}")
+                    self.logger.info(
+                        f"JAR file copied: source size={src_size}, destination size={dest_size}"
+                    )
                     if src_size != dest_size:
-                        self.logger.warning(f"Size mismatch after copy! Source: {src_size}, Destination: {dest_size}")
+                        self.logger.warning(
+                            f"Size mismatch after copy! Source: {src_size}, Destination: {dest_size}"
+                        )
                 else:
-                    self.logger.error(f"Destination file {dest_path} does not exist after copy!")
+                    self.logger.error(
+                        f"Destination file {dest_path} does not exist after copy!"
+                    )
 
                 return dest_path
             except Exception as e:
@@ -867,44 +936,24 @@ rcon.password=sdu923rf873bdf4iu53aw2
             return False
 
     @property
-    def is_server_online(self):
-        """Check if the server is currently online by verifying both socket connection and process status."""
+    async def is_server_online(self) -> bool:
+        # Check process
+        if not self.process or self.process.returncode is not None:
+            self.status = ServerStatus.OFFLINE
+            self.started_at = None
+            return False
+
+        # Async socket check
         try:
-            # First check if we have a running process
-            if hasattr(self, 'process') and self.process:
-                if self.process.poll() is not None:  # Process has terminated
-                    self.status = ServerStatus.OFFLINE
-                    self.started_at = None
-                    return False
-            else:
-                self.status = ServerStatus.OFFLINE
-                return False
-
-            # Then check socket connection
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(1)  # Set timeout to avoid long waits
-                try:
-                    result = sock.connect_ex(("localhost", self.port))
-                    if result == 0:
-                        if self.status == ServerStatus.STARTING:
-                            self.status = ServerStatus.ONLINE
-                            if not self.started_at:
-                                self.started_at = datetime.now()
-                        return True
-                    else:
-                        if self.status not in [ServerStatus.STARTING, ServerStatus.STOPPING]:
-                            self.status = ServerStatus.OFFLINE
-                            self.started_at = None
-                        return False
-                except socket.error as e:
-                    self.logger.debug(f"Socket error checking server status: {e}")
-                    if self.status not in [ServerStatus.STARTING, ServerStatus.STOPPING]:
-                        self.status = ServerStatus.OFFLINE
-                        self.started_at = None
-                    return False
-
-        except Exception as e:
-            self.logger.error(f"Error checking server status: {e}")
+            reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+            writer.close()
+            await writer.wait_closed()
+            if self.status == ServerStatus.STARTING:
+                self.status = ServerStatus.ONLINE
+                if not self.started_at:
+                    self.started_at = datetime.now()
+            return True
+        except (ConnectionRefusedError, OSError):
             if self.status not in [ServerStatus.STARTING, ServerStatus.STOPPING]:
                 self.status = ServerStatus.OFFLINE
                 self.started_at = None
@@ -936,38 +985,38 @@ rcon.password=sdu923rf873bdf4iu53aw2
             return "Offline"
 
     async def measure_process_usage(self):
-        """Measure CPU and memory usage of the Java process"""
+        """Measure CPU and memory usage of the Java process (async-safe)"""
         if self.status != ServerStatus.ONLINE:
             return {"cpu": 0.0, "memory": 0.0}
-            
-        # Find Java process for this server
-        try:
+
+        def get_usage():
             for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                 if proc.info["name"] and "java" in proc.info["name"].lower():
                     cmdline = " ".join(proc.info["cmdline"] or [])
                     if str(self.path) in cmdline or self.name in cmdline:
-                        # Found the process
                         cpu_percent = proc.cpu_percent(interval=0.5)
-                        memory_mb = proc.memory_info().rss / (1024 * 1024)
+                        memory_info = proc.memory_full_info()
+                        memory_mb = memory_info.vms / (1024 * 1024)
                         return {"cpu": cpu_percent, "memory": memory_mb}
-            
-            # No process found
             return {"cpu": 0.0, "memory": 0.0}
+
+        try:
+            return await asyncio.to_thread(get_usage)
         except Exception as e:
             self.logger.error(f"Error measuring process usage: {e}")
             return {"cpu": 0.0, "memory": 0.0}
 
-    def _save_state(self):
+    async def _save_state(self):
         self.data["status"] = self.status
-        self.data["players"] = self.players
+        self.data["players"] = await self.players
         self.data["logs"] = self.logs
         self.data["started_at"] = (
             self.started_at.isoformat() if self.started_at != None else None
         )
         self._save_server_data()
 
-    def get_players(self) -> List[str]:
-        if self.is_server_online:
+    async def get_players(self) -> List[str]:
+        if await self.is_server_online:
             try:
                 with self.rcon_connection() as mcr:
                     response = mcr.command("list")
@@ -1002,7 +1051,21 @@ rcon.password=sdu923rf873bdf4iu53aw2
         except Exception as e:
             self.logger.error(f"Failed to write eula.txt: {e}")
 
-    def start(self):
+    def append_websocket(self, websocket: WebSocket):
+        self.websockets.append(websocket)
+
+    def remove_websocket(self, websocket: WebSocket):
+        self.websockets.remove(websocket)
+
+    async def send_websocket(self, data: Any):
+        self.logger.info(self.websockets)
+        for websocket in self.websockets:
+            try:
+                await websocket.send_json(data)
+            except:
+                self.remove_websocket(websocket)
+
+    async def start(self):
         if self.status != ServerStatus.OFFLINE:
             self.logger.warning(f"Cannot start server, current status is {self.status}")
             return
@@ -1017,7 +1080,7 @@ rcon.password=sdu923rf873bdf4iu53aw2
             self.logger.info(
                 f"Attempting to download JAR file again for {self.type} version {self.version}"
             )
-            jar_result = self._download_jar(self.type, self.version)
+            jar_result = self._download_jar(self.type, self.version, self.jar)
             if not jar_result:
                 self.logger.error("Failed to download JAR file, cannot start server")
                 return
@@ -1035,7 +1098,8 @@ rcon.password=sdu923rf873bdf4iu53aw2
             self.accept_eula()
 
         self.status = ServerStatus.STARTING
-        self._save_state()
+        await self._save_state()
+        await self.send_websocket({"type": "status", "data": "starting"})
         self._shutdown_event.clear()
 
         java_opts = [
@@ -1063,93 +1127,107 @@ rcon.password=sdu923rf873bdf4iu53aw2
             "-Daikars.new.flags=true",
         ]
 
-        start_command = f"java {' '.join(java_opts)} -jar {self.jar_full_path} nogui"
+        start_command = f'java {" ".join(java_opts)} -jar "{self.jar_full_path}" nogui'
         self.logger.info(f"Starting server with command: {start_command}")
 
         try:
-            self.process = subprocess.Popen(
-                start_command,
+            self.process = await asyncio.create_subprocess_exec(
+                "java",
+                *java_opts,
+                "-jar",
+                str(self.jar_full_path),
+                "nogui",
                 cwd=self.path,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                shell=True,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
             )
 
             self.logger.info(f"Started process with PID {self.process.pid}")
         except Exception as e:
             self.logger.error(f"Failed to start server process: {e}", exc_info=True)
             self.status = ServerStatus.OFFLINE
-            self._save_state()
+            await self._save_state()
+            await self.send_websocket({"type": "status", "data": "offline"})
             return
 
-        self.output_thread = threading.Thread(target=self._capture_output, daemon=True)
-        self.output_thread.start()
+        self.output_task = asyncio.create_task(self._capture_output())
+        
 
         # Start performance monitoring
         asyncio.create_task(self.monitor_performance())
 
-    def _capture_output(self):
+    async def _capture_output(self):
         if not self.process or not self.process.stdout:
             self.logger.error("Cannot capture output: process or stdout is None")
             return
 
-        self.logger.debug("Started output capture thread")
-        self.logs = []  # Clear previous logs when starting a new capture
-        
-        for line in iter(self.process.stdout.readline, ""):
-            line = line.strip()
+        self.logger.debug("Started output capture task")
+        self.logs = []
+
+        while True:
+            line_bytes = await self.process.stdout.readline()
+            if not line_bytes:  # EOF
+                break
+            line = line_bytes.decode().strip()
             if not line:
                 continue
-                
+
             self.logs.append(line)
             self.logger.debug(f"Server output: {line}")
 
-            # Broadcast the line to any connected WebSockets
+            # Broadcast to WebSocket
             if hasattr(self, "output_callback") and self.output_callback:
-                asyncio.run_coroutine_threadsafe(self.output_callback(line), loop)
+                await self.output_callback(line)  # no need for run_coroutine_threadsafe
 
             # Check for EULA warning
             if "You need to agree to the EULA" in line:
                 self.logger.info("EULA needs to be accepted")
                 self.eula_needs_acceptance = True
-                
+
             # Detect server state
-            if "Done" in line and "seconds" in line:  # Server is fully started
+            if "Done" in line:
                 self.logger.info("Server reported as fully started")
                 self.status = ServerStatus.ONLINE
-                self.started_at = datetime.now()  # Set start time for uptime
-                self._save_state()
+                self.started_at = datetime.now()
+                await self._save_state()
+                await self.send_websocket({"type": "status", "data": "online"})
+            
+            if "joined the game" in line:
+                await self.send_websocket({"type": "player_update", "data" : await self.players})
+            
+            if "left the game" in line:
+                await self.send_websocket({"type": "player_update", "data" : await self.players})
                 
+
             # Handle startup failure cases
             elif "Failed to start the minecraft server" in line:
                 self.logger.error("Server failed to start")
                 self.status = ServerStatus.OFFLINE
-                self._save_state()
-                
+                await self._save_state()
             elif "Error occurred during initialization of VM" in line:
-                self.logger.error("JVM initialization error - likely incorrect memory settings")
+                self.logger.error(
+                    "JVM initialization error - likely incorrect memory settings"
+                )
                 self.status = ServerStatus.OFFLINE
-                self._save_state()
+                await self._save_state()
 
-        self.process.stdout.close()
         self.logger.info("Server process has terminated")
         self.status = ServerStatus.OFFLINE
         self.started_at = None
-        self._save_state()
+        await self._save_state()
 
     def set_output_callback(self, callback):
         """Set a callback function that will be called for each console output line.
         The callback should be an async function that takes a string parameter."""
         self.logger.debug("Setting output callback")
         self.output_callback = callback
-        
+
         # Send the last few log lines to catch up the client with recent history
-        if hasattr(self, 'logs') and self.logs and callable(callback):
-            self.logger.debug(f"Sending last {min(50, len(self.logs))} log lines to new client")
+        if hasattr(self, "logs") and self.logs and callable(callback):
+            self.logger.debug(
+                f"Sending last {min(50, len(self.logs))} log lines to new client"
+            )
             for line in self.logs[-50:]:  # Send the last 50 lines to the new connection
                 if asyncio.iscoroutinefunction(callback):
                     asyncio.run_coroutine_threadsafe(callback(line), loop)
@@ -1160,13 +1238,14 @@ rcon.password=sdu923rf873bdf4iu53aw2
         usage = await self.measure_process_usage()
         return f"CPU: {usage['cpu']:.1f}%, Memory: {usage['memory']:.1f} MB"
 
-    def stop(self):
+    async def stop(self):
         if self.status not in [ServerStatus.OFFLINE, ServerStatus.STOPPING]:
             self.logger.info(f"Stopping server {self.name}")
             self._shutdown_event.set()
             self.started_at = None
             self.status = ServerStatus.STOPPING
-            self._save_state()
+            await self._save_state()
+            await self.send_websocket({"type": "status", "data": "stopping"})
 
             try:
                 self.logger.debug("Attempting to save world and stop server via RCON")
@@ -1183,51 +1262,64 @@ rcon.password=sdu923rf873bdf4iu53aw2
                 self.logger.warning(
                     f"Failed to stop server via RCON: {e}. Terminating process."
                 )
-                self.process.terminate()
+                if self.process:
+                    self.process.terminate()
 
             self.logger.debug("Waiting for output thread to complete")
-            self.output_thread.join(timeout=30)
-            if self.output_thread.is_alive():
+            try:
+                await asyncio.wait_for(self.output_task, timeout=30)
+            except asyncio.TimeoutError:
                 self.logger.warning("Output thread did not exit, killing process")
-                self.process.kill()
+
+                if self.process:
+                    self.process.kill()
+            if not self.output_task.done():
+                self.output_task.cancel()
+                try:
+                    await self.output_task
+                except asyncio.CancelledError:
+                    pass
 
             self.logger.info("Server stopped")
             self.status = ServerStatus.OFFLINE
-            self._save_state()
-            
-            
+            await self._save_state()
+            await self.send_websocket({"type": "status", "data": "offline"})
 
-    def kill(self):
+    async def kill(self):
         if self.status in [ServerStatus.ONLINE, ServerStatus.STARTING]:
             self.logger.info(f"Force-killing server {self.name}")
             self.status = ServerStatus.STOPPING
-            self._save_state()
-            self.process.terminate()
-            self.output_thread.join()
+            await self._save_state()
+            if self.process:
+                self.process.terminate()
+
+            if self.output_task and not self.output_task.done():
+                self.output_task.cancel()
+
             self.status = ServerStatus.OFFLINE
-            self._save_state()
+            await self._save_state()
             self.logger.info("Server killed")
 
-    def restart(self):
+    async def restart(self):
         self.logger.info(f"Restarting server {self.name}")
-        self.stop()
-        self.start()
+        await self.stop()
+        await self.start()
 
-    def delete(self):
+    async def delete(self):
         self.logger.info(f"Deleting server {self.name}")
-        self.stop()
+        await self.stop()
         try:
             shutil.rmtree(self.path)
             self.logger.info(f"Server directory {self.path} removed")
         except Exception as e:
             self.logger.error(f"Failed to delete server directory: {e}")
 
-    def send_command(self, command):
-        if self.process and self.process.poll() is None and self.process.stdin:
+    async def send_command(self, command: str):
+        if self.process and self.process.returncode is None and self.process.stdin:
             self.logger.debug(f"Sending command: {command}")
             try:
-                self.process.stdin.write(command + "\n")
-                self.process.stdin.flush()
+                self.process.stdin.write((command + "\n").encode())
+                await self.process.stdin.drain()
                 self.logger.debug("Command sent successfully")
             except Exception as e:
                 self.logger.error(f"Failed to send command: {e}")
@@ -1237,7 +1329,7 @@ rcon.password=sdu923rf873bdf4iu53aw2
         try:
             hostname = socket.gethostname()
             private_ip = f"{socket.gethostbyname(hostname)}:{self.port}"
-            public_ip = f"{subprocess.check_output(['curl', 'ifconfig.me']).decode('utf-8').strip()}:{self.port}"
+            public_ip = f"{subprocess.check_output(['curl', '-s', 'ifconfig.me'],stderr=subprocess.DEVNULL).decode('utf-8').strip()}:{self.port}"
             self.logger.debug(
                 f"Server IP addresses - private: {private_ip}, public: {public_ip}"
             )

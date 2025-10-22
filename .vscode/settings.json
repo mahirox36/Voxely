@@ -46,6 +46,8 @@
     "**/*.rpyc": true,
     "**/*.rpa": true,
     "**/*.rpymc": true,
-    "**/cache/": true
+    "**/cache/": true,
+    "backend": true,
+    "frontend": true
 }
 }

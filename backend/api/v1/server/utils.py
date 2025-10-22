@@ -6,10 +6,10 @@ _server_instances: Dict[str, Server] = {}
 _server_details_cache: Dict[str, Any] = {}
 _cache_duration = 5
 
-def get_server_instance(server_name: str) -> Server:
+async def get_server_instance(server_name: str) -> Server:
     """Get a cached server instance or create a new one if it doesn't exist"""
     if server_name not in _server_instances:
-        _server_instances[server_name] = Server(server_name)
+        _server_instances[server_name] = await Server.init(server_name)
     return _server_instances[server_name]
 
 async def process_server(server_name: str) -> Optional[dict]:
@@ -20,7 +20,7 @@ async def process_server(server_name: str) -> Optional[dict]:
             current_time - _server_details_cache[server_name]["timestamp"] < _cache_duration):
             return _server_details_cache[server_name]["data"]
         
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         metrics = await server.get_metrics(True)
         
         response = {
@@ -31,7 +31,7 @@ async def process_server(server_name: str) -> Optional[dict]:
             "metrics": metrics if isinstance(metrics, dict) else metrics.__dict__,
             "port": server.port,
             "maxPlayers": server.players_limit,
-            "players": server.players,
+            "players": await server.players,
             "ip": server.ip
         }
         

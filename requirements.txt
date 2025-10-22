@@ -1,9 +1,0 @@
-fastapi==0.115.12
-mcrcon==0.7.0
-passlib==1.7.4
-psutil==7.0.0
-pydantic==2.11.3
-python_jose==3.4.0
-Requests==2.32.3
-rich==14.0.0
-uvicorn==0.34.2

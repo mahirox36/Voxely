@@ -19,7 +19,7 @@ async def list_backups(request: Request, server_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         if not server.backup_path.exists():
             return []
             
@@ -47,8 +47,8 @@ async def create_backup(request: Request, server_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
-        backup_path = server.backup_server()
+        server = await get_server_instance(server_name)
+        backup_path = await server.backup_server()
         
         if not backup_path:
             raise HTTPException(status_code=500, detail="Failed to create backup")
@@ -63,13 +63,13 @@ async def restore_backup(request: Request, server_name: str, backup_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         backup_file = server.backup_path / backup_name
         
         if not backup_file.exists():
             raise HTTPException(status_code=404, detail="Backup not found")
             
-        success = server.restore_backup(str(backup_file))
+        success = await server.restore_backup(str(backup_file))
         if not success:
             raise HTTPException(status_code=500, detail="Failed to restore backup")
             

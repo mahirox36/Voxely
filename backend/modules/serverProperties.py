@@ -28,13 +28,6 @@ class Difficulty(StrEnum):
     NORMAL = "normal"
     HARD = "hard"
 
-class LevelType(StrEnum):
-    NORMAL = "minecraft:normal"
-    FLAT = "minecraft:flat"
-    LARGE_BIOMES = "minecraft:large_biomes"
-    AMPLIFIED = "minecraft:amplified"
-    CUSTOMIZED = "minecraft:customized"
-
 @dataclass
 class PropertyDefinition:
     type: type
@@ -88,8 +81,7 @@ class Properties:
                 description="Game difficulty"
             ),
             "level-type": PropertyDefinition(
-                LevelType, LevelType.NORMAL,
-                lambda x: x in LevelType,
+                str, "minecarft:normal",
                 description="World generation type"
             ),
             # Add more properties with specific version/server type support

@@ -10,7 +10,7 @@ async def accept_eula(request: Request, server_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         server.accept_eula()
         return {"message": "EULA accepted successfully"}
     except Exception as e:
@@ -22,7 +22,7 @@ async def check_eula_status(request: Request, server_name: str):
     current_user = await get_current_user(request)
     
     try:
-        server = get_server_instance(server_name)
+        server = await get_server_instance(server_name)
         eula_path = server.path / "eula.txt"
         
         if not eula_path.exists():

@@ -1,0 +1,9 @@
+fastapi
+mcrcon
+passlib
+psutil
+pydantic
+python_jose
+Requests
+rich
+uvicorn

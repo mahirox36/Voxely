@@ -1,4 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import json
+import logging
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
 import asyncio
@@ -8,16 +20,10 @@ from modules.servers import Server, ServerType, get_servers
 from modules.jar import MinecraftServerDownloader
 from .utils import get_server_instance, process_server
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["management"])
 
-class CreateServerRequest(BaseModel):
-    name: str
-    type: str
-    version: str
-    minRam: int
-    maxRam: int
-    port: int
-    maxPlayers: int
+
 
 class ServerResponse(BaseModel):
     name: str
@@ -30,126 +36,306 @@ class ServerResponse(BaseModel):
     players: Optional[List[str]] = None
     ip: Optional[Dict[str, str]] = None
 
+
+def format_console_message(message: str, message_type: str | None = None):
+    # Use match-case for clearer message type detection (Python 3.10+)
+    lowered = message.lower()
+    if message_type is None:
+        match True:
+            case _ if "error" in lowered or "severe" in lowered:
+                message_type = "error"
+            case _ if "warn" in lowered or "warning" in lowered:
+                message_type = "warning"
+            case _ if "done " in lowered and "for help" in lowered:
+                message_type = "success"
+            case _ if "info" in lowered:
+                message_type = "info"
+            case _ if "debug" in lowered:
+                message_type = "debug"
+            case _ if "eula" in lowered:
+                message_type = "eula"
+            case _ if (
+                "fail" in lowered or "exception" in lowered or "traceback" in lowered
+            ):
+                message_type = "critical"
+            case _ if "starting" in lowered or "started" in lowered:
+                message_type = "startup"
+            case _ if "stopping" in lowered or "stopped" in lowered:
+                message_type = "shutdown"
+            case _:
+                message_type = "default"
+
+    return {"text": message, "type": message_type, "timestamp": time.strftime("%H:%M:%S")}
+
+
 @router.get("/get", response_model=List[ServerResponse])
 async def list_servers(request: Request):
     """Get all servers with their current status"""
     current_user = await get_current_user(request)
-    
+
     try:
         server_names = get_servers()
         if not server_names:
             return []
-        
+
         tasks = [process_server(name) for name in server_names]
         servers_info = await asyncio.gather(*tasks)
         return [server for server in servers_info if server is not None]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve servers: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve servers: {str(e)}"
+        )
+
 
 @router.get("/versions")
 async def get_available_versions(request: Request):
     """Get available Minecraft versions for different server types"""
     current_user = await get_current_user(request)
-    
+
     try:
         downloader = MinecraftServerDownloader()
+        purpur = downloader.get_purpur_versions()
+        purpur.reverse()
         return {
             "vanilla": downloader.get_vanilla_versions(),
             "paper": downloader.get_paper_versions(),
             "fabric": downloader.get_fabric_versions(),
-            "purpur": downloader.get_purpur_versions()
+            "purpur": purpur,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch versions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch versions: {str(e)}"
+        )
+
 
 @router.post("/create", status_code=201)
-async def create_server(request: Request, server_request: CreateServerRequest):
+async def create_server(request: Request,
+    name: str = Form(...),
+    type: str = Form(...),
+    version: str = Form(...),
+    minRam: int = Form(...),
+    maxRam: int = Form(...),
+    port: int = Form(...),
+    maxPlayers: int = Form(...),
+    jar_file: Optional[UploadFile] = File(None)  # optional file
+):
     """Create a new Minecraft server"""
     current_user = await get_current_user(request)
-    
+
     try:
         try:
-            server_type = ServerType(server_request.type)
+            server_type = ServerType(type)
         except ValueError:
             raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid server type. Must be one of: {', '.join([t.value for t in ServerType])}"
+                status_code=400,
+                detail=f"Invalid server type. Must be one of: {', '.join([t.value for t in ServerType])}",
             )
-        
-        server = Server(
-            name=server_request.name,
+        if jar_file:
+            # Save uploaded jar to 'versions/' folder
+            file_location = f"versions/{jar_file.filename}"
+            with open(file_location, "wb") as f:
+                f.write(await jar_file.read())
+            jar  = file_location
+
+        server = await Server.init(
+            name=name,
             type=server_type,
-            version=server_request.version,
-            min_ram=server_request.minRam,
-            max_ram=server_request.maxRam,
-            port=server_request.port,
-            players_limit=server_request.maxPlayers
+            version=version,
+            min_ram=minRam,
+            max_ram=maxRam,
+            port=port,
+            players_limit=maxPlayers,
+            jar=jar
         )
-        
+
         return {"message": "Server created successfully", "needsEulaAcceptance": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{server_name}", response_model=ServerResponse)
-async def get_server(server_name: str, request: Request):
-    """Get details for a specific server"""
-    current_user = await get_current_user(request)
+
+HEARTBEAT_INTERVAL = 15
+
+
+@router.websocket("/ws/{server_name}")
+async def websocket_server(websocket: WebSocket, server_name: str):
+    """WebSocket endpoint for real-time conv progress"""
+    current_user = await get_current_user(websocket)  # type: ignore
+    await websocket.accept()
+    server = await get_server_instance(server_name)
+    server.append_websocket(websocket)
+
+    def accepted_eula():
+        eula_path = server.path / "eula.txt"
+        
+        if not eula_path.exists():
+            return False
+
+        with open(eula_path, "r") as f:
+            content = f.read()
+            return True
     
-    try:
-        server_names = get_servers()
-        if server_name not in server_names:
-            raise HTTPException(status_code=404, detail=f"Server '{server_name}' not found")
-            
-        server_info = await process_server(server_name)
-        if not server_info:
-            raise HTTPException(status_code=500, detail="Failed to get server details")
-            
-        return server_info
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get server details: {str(e)}")
+    async def send_to_websocket(message: str):
+        try:
+            formatted_message = format_console_message(message)
+            await websocket.send_json({"type": "console", "data": formatted_message})
+        except Exception as e:
+            print(f"Error sending message to WebSocket: {e}")
 
-@router.post("/{server_name}/start")
-async def start_server(request: Request, server_name: str):
-    current_user = await get_current_user(request)
-    try:
-        server = get_server_instance(server_name)
-        if server.status == "online":
-            raise HTTPException(status_code=400, detail="Server is already running")
-        server.start()
-        return {"message": "Server started successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    server.set_output_callback(send_to_websocket)
 
-@router.post("/{server_name}/stop")
-async def stop_server(request: Request, server_name: str):
-    current_user = await get_current_user(request)
-    try:
-        server = get_server_instance(server_name)
-        if server.status == "offline":
-            raise HTTPException(status_code=400, detail="Server is not running")
-        server.stop()
-        return {"message": "Server stopped successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if hasattr(server, "logs") and server.logs:
+        for line in server.logs[-100:]:
+            formatted_line = format_console_message(line)
+            await websocket.send_json({"type": "console", "data": formatted_line})
+            await asyncio.sleep(0.01)
+    else:
+        await websocket.send_json(
+            {
+                "type": "console",
+                "data": format_console_message(
+                    "Console ready. Server not started yet.", "system"
+                ),
+            }
+        )
 
-@router.post("/{server_name}/restart")
-async def restart_server(request: Request, server_name: str):
-    current_user = await get_current_user(request)
-    try:
-        server = get_server_instance(server_name)
-        server.restart()
-        return {"message": "Server restarted successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    async def get_info():
+        metrics = await server.get_metrics(True)
 
-@router.post("/{server_name}/command")
-async def send_command(request: Request, server_name: str, command: str):
-    current_user = await get_current_user(request)
+        return {
+            "name": server.name,
+            "status": server.status,
+            "type": server.type,
+            "version": server.version,
+            "metrics": metrics if isinstance(metrics, dict) else metrics.__dict__,
+            "port": server.port,
+            "maxPlayers": server.players_limit,
+            "players": await server.players,
+            "ip": server.ip,
+        }
+
+    async def send_heartbeat():
+        while True:
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                break
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+
+    async def get_server():
+        """Get details for a specific server"""
+
+        try:
+
+            await websocket.send_json({"type": "info", "data": await get_info()})
+        except Exception as e:
+
+            await websocket.send_json({"type": "error", "data": str(e)})
+
+    async def start_server():
+        try:
+
+            if server.status == "online":
+                await websocket.send_json(
+                    {"type": "error", "data": "server is already running"}
+                )
+            await server.start()
+
+        except Exception as e:
+            await websocket.send_json({"type": "error", "data": str(e)})
+
+    async def send_command(command: str):
+        try:
+            if server.status != "online":
+                await websocket.send_json(
+                    {"type": "error", "data": "server is not running"}
+                )
+            await server.send_command(command)
+        except Exception as e:
+            await websocket.send_json({"type": "error", "data": str(e)})
+
+    async def stop_server():
+        try:
+            if server.status == "offline":
+                await websocket.send_json(
+                    {"type": "error", "data": "server is not running"}
+                )
+            await server.stop()
+        except Exception as e:
+            await websocket.send_json({"type": "error", "data": str(e)})
+
+    async def restart_server():
+        try:
+            await server.restart()
+        except Exception as e:
+            await websocket.send_json({"type": "error", "data": str(e)})
+
+    async def handle_messages():
+
+        try:
+            while True:
+                data = await websocket.receive_json()
+                msg_type = data.get("action", "")
+
+                if msg_type == "pong":
+                    continue
+                elif msg_type == "start":
+                    await start_server()
+                elif msg_type == "restart":
+                    await restart_server()
+                elif msg_type == "stop":
+                    await stop_server()
+                elif msg_type == "command":
+                    await send_command(data.get("data", ""))
+                else:
+                    continue
+
+        except WebSocketDisconnect:
+            logger.info("Client disconnected")
+        except Exception as e:
+            logger.warning(f"Message handling error: {e}")
+
+    # Start concurrent tasks
+    
+    
+    
+    
+    heartbeat_task = asyncio.create_task(send_heartbeat())
+    message_task = asyncio.create_task(handle_messages())
+
     try:
-        server = get_server_instance(server_name)
-        if server.status != "online":
-            raise HTTPException(status_code=400, detail="Server is not running")
-        server.send_command(command)
-        return {"message": "Command sent successfully"}
+        await get_server()
+        
+        if not accepted_eula():
+            await websocket.send_json({"type": "need_eula"})
+        
+        logger.info("WebSocket connection established")
+        done, pending = await asyncio.wait(
+            [heartbeat_task, message_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Cancel remaining tasks
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"WebSocket error: {e}")
+    finally:
+        # Cleanup
+        for task in [heartbeat_task, message_task]:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        try:
+            server.remove_websocket(websocket)
+            await websocket.close()
+        except Exception:
+            pass
