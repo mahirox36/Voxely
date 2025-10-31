@@ -1,31 +1,5 @@
 import { motion } from "framer-motion";
 
-export const FileManagerTab = () => (
-  <motion.div
-    key="files"
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    className="glass-card"
-  >
-    <h2 className="text-xl font-semibold text-white mb-4">File Manager</h2>
-    <p className="text-white/60">Coming soon - File management interface</p>
-  </motion.div>
-);
-
-export const PluginsTab = () => (
-  <motion.div
-    key="plugins"
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    className="glass-card"
-  >
-    <h2 className="text-xl font-semibold text-white mb-4">Plugin Manager</h2>
-    <p className="text-white/60">Coming soon - Plugin management interface</p>
-  </motion.div>
-);
-
 export const BackupsTab = () => (
   <motion.div
     key="backups"

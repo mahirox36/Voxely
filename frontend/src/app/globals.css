@@ -250,3 +250,29 @@ select:focus,
 textarea:focus {
   @apply ring-2 ring-pink-500/50 outline-none;
 }
+
+.custom-scrollbar {
+  scrollbar-width: auto; /* Firefox */
+  scrollbar-color: #ffffff rgba(0, 0, 0, 0.05); /* Firefox */
+}
+
+/* Chrome, Edge, Safari */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #ffffff; /* Pink thumb */
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #d6d6d6; /* Lighter pink on hover */
+}

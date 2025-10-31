@@ -1,12 +1,11 @@
-'use client';
-
-import { useState, memo } from 'react';
-import { motion } from 'framer-motion';
-import { Server, Users } from 'lucide-react';
+"use client";
+import { memo } from "react";
+import { motion } from "framer-motion";
+import { Server, Users, Cpu, HardDrive, Clock, Activity } from "lucide-react";
 
 interface ServerCardProps {
   name: string;
-  status: 'online' | 'offline' | 'starting' | 'stopping';
+  status: "online" | "offline" | "starting" | "stopping";
   type: string;
   version: string;
   metrics?: {
@@ -20,7 +19,6 @@ interface ServerCardProps {
   onClick?: () => void;
 }
 
-// Memoize the component to prevent unnecessary re-renders
 const ServerCard = memo(function ServerCard({
   name,
   status,
@@ -29,88 +27,160 @@ const ServerCard = memo(function ServerCard({
   metrics,
   port,
   maxPlayers = 20,
-  onClick
+  onClick,
 }: ServerCardProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Status indicator colors
-  const statusColors = {
-    online: 'bg-green-500',
-    offline: 'bg-red-500',
-    starting: 'bg-yellow-500',
-    stopping: 'bg-orange-500'
+  const statusConfig = {
+    online: {
+      color: "bg-emerald-500",
+      text: "Online",
+      glow: "shadow-emerald-500/50",
+      gradient: "from-emerald-500/20 to-transparent",
+    },
+    offline: {
+      color: "bg-slate-200",
+      text: "Offline",
+      glow: "shadow-slate-200/30",
+      gradient: "from-slate-200/10 to-transparent",
+    },
+    starting: {
+      color: "bg-amber-500",
+      text: "Starting",
+      glow: "shadow-amber-500/50",
+      gradient: "from-amber-500/20 to-transparent",
+    },
+    stopping: {
+      color: "bg-orange-500",
+      text: "Stopping",
+      glow: "shadow-orange-500/50",
+      gradient: "from-orange-500/20 to-transparent",
+    },
   };
 
-  const statusText = {
-    online: 'Online',
-    offline: 'Offline',
-    starting: 'Starting',
-    stopping: 'Stopping'
-  };
+  const config = statusConfig[status];
+  const playerCount = metrics?.player_count || "0";
+  const playerPercentage = (parseInt(playerCount) / maxPlayers) * 100;
 
   return (
     <motion.div
-      className={`glass-card p-6 rounded-lg cursor-pointer transition-all duration-300 ${isHovered ? 'scale-[1.02]' : ''}`}
-      whileHover={{ scale: 1.02 }}
+      className="group relative overflow-hidden glass-panel rounded-2xl cursor-pointer"
+      whileHover={{ scale: 1.02, y: -4 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h3 className="text-xl font-bold text-white truncate max-w-[200px]">{name}</h3>
-          <div className="flex items-center mt-1">
-            <div className={`w-3 h-3 rounded-full ${statusColors[status]} mr-2`}></div>
-            <span className="text-white/70">{statusText[status]}</span>
+      {/* Animated gradient overlay */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-br ${config.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+      />
+
+      {/* Status glow effect */}
+      <div
+        className={`absolute -top-24 -right-24 w-48 h-48 ${config.color} rounded-full blur-3xl opacity-20 group-hover:opacity-30 transition-opacity duration-500`}
+      />
+
+      <div className="relative p-6">
+        {/* Header */}
+        <div className="flex justify-between items-start mb-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className={`w-2.5 h-2.5 rounded-full ${config.color} ${config.glow} shadow-lg animate-pulse`}
+              />
+              <h3 className="text-xl font-bold text-white truncate">{name}</h3>
+            </div>
+            <span className="text-sm text-slate-400">{config.text}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass-container backdrop-blur-sm">
+            <Server className="w-4 h-4 text-slate-400" />
+            <span className="text-sm font-medium text-slate-300">
+              {type} {version}
+            </span>
           </div>
         </div>
-        <div className="py-1 px-3 rounded bg-white/10 text-white/80">
-          {type} {version}
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4 mt-6">
-        {status === 'online' && metrics ? (
-          <>
-            <div className="bg-white/5 p-3 rounded">
-              <p className="text-white/50 text-xs mb-1">CPU</p>
-              <p className="text-white font-medium">{metrics.cpu_usage}</p>
-            </div>
-            <div className="bg-white/5 p-3 rounded">
-              <p className="text-white/50 text-xs mb-1">Memory</p>
-              <p className="text-white font-medium">{metrics.memory_usage}</p>
-            </div>
-            <div className="bg-white/5 p-3 rounded flex items-center">
-              <div className="mr-2">
-                <Users className="text-white/70" />
+        {/* Metrics Grid */}
+        {status === "online" && metrics ? (
+          <div className="space-y-3">
+            {/* Players Bar */}
+            <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-medium text-slate-300">
+                    Players
+                  </span>
+                </div>
+                <span className="text-lg font-bold text-white">
+                  {playerCount}
+                  <span className="text-slate-500">/{maxPlayers}</span>
+                </span>
               </div>
-              <div>
-                <p className="text-white/50 text-xs">Players</p>
-                <p className="text-white font-medium">{metrics.player_count} / {maxPlayers}</p>
-              </div>
-            </div>
-            <div className="bg-white/5 p-3 rounded flex items-center">
-              <div className="mr-2">
-                <Server className="text-white/70" />
-              </div>
-              <div>
-                <p className="text-white/50 text-xs">Port</p>
-                <p className="text-white font-medium">{port || 'N/A'}</p>
+              <div className="h-2 bg-slate-700/50 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${playerPercentage}%` }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                />
               </div>
             </div>
-          </>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/30 backdrop-blur-sm hover:border-slate-600/50 transition-colors">
+                <div className="flex items-center gap-2 mb-1">
+                  <Cpu className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs text-slate-400">CPU</span>
+                </div>
+                <p className="text-xl font-bold text-white">
+                  {metrics.cpu_usage}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/30 backdrop-blur-sm hover:border-slate-600/50 transition-colors">
+                <div className="flex items-center gap-2 mb-1">
+                  <HardDrive className="w-4 h-4 text-pink-400" />
+                  <span className="text-xs text-slate-400">Memory</span>
+                </div>
+                <p className="text-xl font-bold text-white">
+                  {metrics.memory_usage}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/30 backdrop-blur-sm hover:border-slate-600/50 transition-colors">
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className="w-4 h-4 text-green-400" />
+                  <span className="text-xs text-slate-400">Uptime</span>
+                </div>
+                <p className="text-xl font-bold text-white">{metrics.uptime}</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/30 backdrop-blur-sm hover:border-slate-600/50 transition-colors">
+                <div className="flex items-center gap-2 mb-1">
+                  <Activity className="w-4 h-4 text-orange-400" />
+                  <span className="text-xs text-slate-400">Port</span>
+                </div>
+                <p className="text-xl font-bold text-white">{port || "N/A"}</p>
+              </div>
+            </div>
+          </div>
         ) : (
-          <div className="col-span-2 text-center py-4 px-2 bg-white/5 rounded">
-            <Server className="text-white/30 text-2xl mx-auto mb-2" />
-            <p className="text-white/50">
-              {status === 'starting' 
-                ? 'Server is starting...' 
-                : status === 'stopping' 
-                  ? 'Server is stopping...' 
-                  : 'Server is offline'}
+          <div className="p-8 rounded-xl bg-slate-800/30 border border-slate-700/30 backdrop-blur-sm text-center">
+            <Server className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+            <p className="text-slate-400 font-medium">
+              {status === "starting"
+                ? "Server is starting..."
+                : status === "stopping"
+                ? "Server is stopping..."
+                : "Server is offline"}
             </p>
           </div>
         )}
+      </div>
+
+      {/* Hover shine effect */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
       </div>
     </motion.div>
   );

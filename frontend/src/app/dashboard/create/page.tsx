@@ -29,9 +29,14 @@ const serverTypes = [
     description: "Paper fork with additional features",
   },
   {
-    id: "custom",
-    name: "Custom",
-    description: "upload your own Jar file",
+    id: "forge",
+    name: "Forge",
+    description: "The Original For Modded",
+  },
+  {
+    id: "neoforge",
+    name: "NeoForge",
+    description: "Forge Fork",
   },
 ];
 
@@ -67,7 +72,7 @@ function AnimatedDropdown({
     <div className={`relative ${className}`} ref={dropdownRef}>
       <button
         type="button"
-        className="w-full flex items-center justify-between bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
+        className="w-full flex items-center justify-between bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-pink-500 transition-color"
         onClick={() => setIsOpen(!isOpen)}
       >
         <span>{value}</span>
@@ -129,13 +134,6 @@ export default function CreateServer() {
     port: 25565,
     maxPlayers: 20,
   });
-  const [jarFile, setJarFile] = useState<File | null>(null);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setJarFile(e.target.files[0]);
-    }
-  };
 
   useEffect(() => {
     const fetchVersions = async () => {
@@ -180,10 +178,6 @@ export default function CreateServer() {
       data.append("maxRam", formData.maxRam.toString());
       data.append("port", formData.port.toString());
       data.append("maxPlayers", formData.maxPlayers.toString());
-
-      if (jarFile) {
-        data.append("jar_file", jarFile);
-      }
 
       await api.post("/servers/create", data);
 
@@ -290,52 +284,6 @@ export default function CreateServer() {
                         </p>
                       </motion.div>
                     ))}
-                    <AnimatePresence>
-                      {formData.type === "custom" && (
-                        <motion.div
-                          key="customJar"
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.2 }}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className="p-4 rounded-lg border-2 col-span-2 border-pink-500 bg-pink-500/20"
-                        >
-                          <label className="block text-sm font-medium text-white mb-2">
-                            Upload Custom Jar
-                          </label>
-
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="file"
-                              name="jar_file"
-                              accept=".jar,.zip"
-                              onChange={handleFileChange}
-                              disabled={formData.type !== "custom"}
-                              className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-pink-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                            <motion.span
-                              className="text-white/70 text-sm"
-                              animate={{
-                                opacity: formData.type === "custom" ? 1 : 0.6,
-                              }}
-                            >
-                              {formData.type === "custom"
-                                ? "Ready to upload"
-                                : "Enable Custom to upload"}
-                            </motion.span>
-                          </div>
-
-                          <p className="text-white/60 text-xs mt-2">
-                            Choose a .jar (or .zip) file to upload. When
-                            submitting the form the file should be included as
-                            the form field &quot;jar_file&quot; in a
-                            multipart/form-data request.
-                          </p>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </div>
                 </div>
 

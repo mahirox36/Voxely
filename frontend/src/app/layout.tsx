@@ -4,6 +4,7 @@ import BackgroundElements from '@/components/BackgroundElements';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { Toaster } from 'sonner'
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -26,6 +27,7 @@ export default function RootLayout({
             <Navbar />
             <main>{children}</main>
             <Footer />
+            <Toaster position="bottom-right" richColors theme={"dark"} />
           </div>
         </ThemeProvider>
       </body>

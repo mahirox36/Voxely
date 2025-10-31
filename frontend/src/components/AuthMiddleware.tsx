@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { api } from '@/utils/api';
 
 export default function AuthMiddleware({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -21,8 +20,6 @@ export default function AuthMiddleware({ children }: { children: React.ReactNode
           throw new Error('No authentication token found');
         }
 
-        // Use the apiRequest utility to verify the token
-        await api.get('/auth/verify');
         setIsAuthorized(true);
       } catch (error) {
         console.error('Auth verification failed:', error);

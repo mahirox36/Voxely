@@ -8,7 +8,6 @@ import { motion } from 'framer-motion';
 export default function Signup() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [isRedirecting, setIsRedirecting] = useState(false);
   const router = useRouter();
@@ -41,7 +40,6 @@ export default function Signup() {
         body: JSON.stringify({
           username,
           password,
-          email
         }),
       });
 
@@ -140,25 +138,6 @@ export default function Signup() {
                 placeholder="Choose a username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <label htmlFor="email" className="block text-sm font-medium text-white mb-1">
-                Email (Optional)
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                className="w-full px-4 py-2 rounded-lg border border-white/30 bg-white/10 backdrop-blur-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
               />
             </motion.div>
 

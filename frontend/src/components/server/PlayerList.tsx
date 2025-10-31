@@ -18,11 +18,11 @@ export const PlayerList = ({ players = [], maxPlayers }: PlayerListProps) => {
         Players ({players?.length || 0}/{maxPlayers})
       </h2>
       {players && players.length > 0 ? (
-        <div className="space-y-2">
+        <div className="space-y-2 ">
           {players.map((player, index) => (
             <div
               key={index}
-              className="bg-white/5 p-3 rounded-lg flex items-center"
+              className="bg-white/5 p-3 rounded-lg flex items-center overflow-y-auto custom-scrollbar"
             >
               <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center mr-3">
                 {/* <FaUsers className="text-green-400" /> */}
