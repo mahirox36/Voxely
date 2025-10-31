@@ -52,6 +52,7 @@ from .project import *
 from .tags import *
 from .utils import *
 from .versions import *
+from .modpack import *
 __version__ = "1.0.0"
 __author__ = "Mahiro"
 __license__ = "MIT"

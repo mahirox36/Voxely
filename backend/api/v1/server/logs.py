@@ -13,7 +13,7 @@ class LogInfo(BaseModel):
     modified: str
     path: str
 
-@router.get("/{server_name}/logs", response_model=List[LogInfo])
+@router.get("/logs", response_model=List[LogInfo])
 async def list_logs(request: Request, server_name: str):
     """List server log files"""
     current_user = await get_current_user(request)
@@ -43,7 +43,7 @@ async def list_logs(request: Request, server_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{server_name}/logs/{log_name}")
+@router.get("/logs/{log_name}")
 async def get_log_content(request: Request, server_name: str, log_name: str, last_lines: int = 1000):
     """Get contents of a specific log file"""
     current_user = await get_current_user(request)

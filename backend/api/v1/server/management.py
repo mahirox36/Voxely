@@ -2,6 +2,7 @@ from datetime import datetime
 import json
 import logging
 import os
+import uuid
 from fastapi import (
     APIRouter,
     Depends,
@@ -20,12 +21,13 @@ import time
 
 from watchfiles import awatch
 from ..auth import get_current_user
-from modules.servers import Server, ServerType, get_servers
+from modules.servers import ClientConnection, Server, ServerType, get_servers
 from modules.jar import MinecraftServerDownloader
 from .utils import get_server_instance, process_server
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["management"])
+# yes_router = APIRouter(tags=["management"])
+router = APIRouter(tags=["websocket"])
 
 
 class ServerResponse(BaseModel):
@@ -103,10 +105,15 @@ async def get_available_versions(request: Request):
         downloader = MinecraftServerDownloader()
         purpur = downloader.get_purpur_versions()
         purpur.reverse()
+        forge: List[str] = list(downloader.get_forge_versions().keys())
+        forge.reverse()
+        # forge = {i: key for i, key in enumerate(forge_keys, start=0)}
         return {
             "vanilla": downloader.get_vanilla_versions(),
             "paper": downloader.get_paper_versions(),
             "fabric": downloader.get_fabric_versions(),
+            "forge": forge,
+            "neoforge": downloader.get_neoforge_versions(),
             "purpur": purpur,
         }
     except Exception as e:
@@ -152,8 +159,7 @@ async def create_server(
             min_ram=minRam,
             max_ram=maxRam,
             port=port,
-            players_limit=maxPlayers,
-            jar=jar,
+            players_limit=maxPlayers
         )
 
         return {"message": "Server created successfully", "needsEulaAcceptance": True}
@@ -170,7 +176,8 @@ async def websocket_server(websocket: WebSocket, server_name: str):
     current_user = await get_current_user(websocket)  # type: ignore
     await websocket.accept()
     server = await get_server_instance(server_name)
-    server.append_websocket(websocket)
+    connection = ClientConnection(websocket, str(uuid.uuid4()))
+    server.append_websocket(connection)
 
     def accepted_eula():
         eula_path = server.path / "eula.txt"
@@ -266,7 +273,7 @@ async def websocket_server(websocket: WebSocket, server_name: str):
             await websocket.send_json({"type": "error", "data": str(e)})
 
     async def watch_files():
-        base_path =  server.path
+        base_path = server.path
         if not base_path.exists():
             await websocket.send_json({"type": "error", "data": "Path not found"})
             return
@@ -281,7 +288,9 @@ async def websocket_server(websocket: WebSocket, server_name: str):
                     stat = entry.stat()
                     files.append(
                         {
-                            "path": str(entry.relative_to(server.path)).replace("\\", "/"),
+                            "path": str(entry.relative_to(server.path)).replace(
+                                "\\", "/"
+                            ),
                             "name": entry.name,
                             "type": "directory" if entry.is_dir() else "file",
                             "size": stat.st_size if not entry.is_dir() else None,
@@ -307,13 +316,17 @@ async def websocket_server(websocket: WebSocket, server_name: str):
                         "path": os.path.relpath(file_path, server.path),
                     }
                 )
-            await websocket.send_json(
-                {
-                    "type": "file_update",
-                    "changes": events,
-                    "data": await list_files(),
-                }
-            )
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "file_update",
+                        "changes": events,
+                        "data": await list_files(),
+                    }
+                )
+            except Exception as e:
+                print(f"Error sending file update: {e}")
+                break
 
     async def handle_messages():
         try:
@@ -374,7 +387,7 @@ async def websocket_server(websocket: WebSocket, server_name: str):
                     pass
 
         try:
-            server.remove_websocket(websocket)
+            server.remove_websocket(connection)
             await websocket.close()
         except Exception:
             pass

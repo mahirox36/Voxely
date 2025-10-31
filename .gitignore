@@ -14,5 +14,9 @@ BuildTools.log.txt
 
 logs/
 data/
+.venv
 
 test.*
+.env
+.vscode
+.vscode2

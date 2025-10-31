@@ -2,6 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+import shutil
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from typing import List
 from pydantic import BaseModel
@@ -22,7 +23,7 @@ class FileListResponse(BaseModel):
     modified: str | None
 
 
-# @router.get("/{server_name}/files", response_model=List[FileListResponse])
+# @router.get("/files", response_model=List[FileListResponse])
 # async def list_files(request: Request, server_name: str, path: str = ""):
 #     """List files in the server directory"""
 #     current_user = await get_current_user(request)
@@ -96,7 +97,7 @@ class FileListResponse(BaseModel):
 #         )
 
 
-@router.get("/{server_name}/files/get/{path:path}")
+@router.get("/files/get/{path:path}")
 async def get_file(request: Request, server_name: str, path: str):
     """Get a specific file from the server directory"""
     current_user = await get_current_user(request)
@@ -118,7 +119,7 @@ async def get_file(request: Request, server_name: str, path: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{server_name}/files/write/{path:path}")
+@router.post("/files/write/{path:path}")
 async def write_file(request: Request, server_name: str, path: str):
     """Write data to a specific file in the server directory"""
     current_user = await get_current_user(request)
@@ -163,7 +164,7 @@ async def zip_files_async(zip_path: Path, server_path: Path, files_to_zip: list[
     await loop.run_in_executor(executor, sync_zip)
 
 
-@router.post("/{server_name}/files/upload/{path:path}")
+@router.post("/files/upload/{path:path}")
 async def upload_file(
     request: Request, server_name: str, path: str, file: UploadFile = File(...)
 ):
@@ -173,7 +174,13 @@ async def upload_file(
         server = await get_server_instance(server_name)
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file uploaded")
-        if not path or path in ["/", ".", "./", "", "current_directory_super_long_because_empty_string_is_bad_and_also_if_there_were_someone_stupid_enough_to_name_a_folder_like_this_we_need_to_handle_it_properly"]:
+        if not path or path in [
+            "/",
+            ".",
+            "./",
+            "",
+            "current_directory_super_long_because_empty_string_is_bad_and_also_if_there_were_someone_stupid_enough_to_name_a_folder_like_this_we_need_to_handle_it_properly",
+        ]:
             dest_path = server.path / file.filename
         else:
             dest_path = server.path / path / file.filename
@@ -189,7 +196,55 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{server_name}/files/delete/{path:path}")
+@router.post("/files/create/{path:path}")
+async def create_file(request: Request, server_name: str, path: str):
+    """Upload a file to the server directory"""
+    current_user = await get_current_user(request)
+    try:
+        server = await get_server_instance(server_name)
+        dest_path = server.path / path
+
+        if dest_path.exists() and dest_path.is_file():
+            raise HTTPException(status_code=400, detail="a file exists here")
+
+        with open(dest_path, "w") as f:
+            f.write("")
+
+        return {"message": f"File '{dest_path.stem}' uploaded successfully."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/files/create_folder/{path:path}")
+async def create_folder(request: Request, server_name: str, path: str):
+    """Upload a file to the server directory"""
+    current_user = await get_current_user(request)
+    try:
+        server = await get_server_instance(server_name)
+        dest_path = server.path / path
+
+        if dest_path.exists():
+            if not dest_path.is_dir():
+                raise HTTPException(
+                    status_code=400, detail="Invalid path (a file exists here)."
+                )
+            raise HTTPException(status_code=400, detail="Folder already exists.")
+
+        if dest_path.name in ["mods", "plugins"]:
+            raise HTTPException(status_code=400, detail="Invalid path name.")
+
+        os.makedirs(dest_path, exist_ok=True)
+
+        return {"message": f"File '{dest_path.stem}' uploaded successfully."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/files/delete/{path:path}")
 async def delete_file(request: Request, server_name: str, path: str):
     """Delete a specific file from the server directory"""
     current_user = await get_current_user(request)
@@ -200,8 +255,17 @@ async def delete_file(request: Request, server_name: str, path: str):
 
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
+        elif file_path.name in ["mods", "plugins"]:
+            raise HTTPException(
+                status_code=400, detail="Cannot delete protected directory"
+            )
 
-        file_path.unlink()
+        if file_path.is_file():
+            file_path.unlink()
+        elif file_path.is_dir():
+            shutil.rmtree(file_path)
+        else:
+            raise HTTPException(status_code=400, detail="Unknown file type")
 
         return {"message": f"File '{path}' deleted successfully."}
     except HTTPException:
@@ -210,7 +274,7 @@ async def delete_file(request: Request, server_name: str, path: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{server_name}/files/zip")
+@router.post("/files/zip")
 async def zip_files(request: Request, server_name: str):
     """Zip multiple files in the server directory"""
     current_user = await get_current_user(request)
@@ -221,7 +285,7 @@ async def zip_files(request: Request, server_name: str):
     try:
         server = await get_server_instance(server_name)
         zip_path = server.path / zip_name
-        
+
         if zip_path.suffix != ".zip":
             zip_path = zip_path.with_suffix(".zip")
 
@@ -234,7 +298,7 @@ async def zip_files(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{server_name}/files/unzip")
+@router.post("/files/unzip")
 async def unzip_file(request: Request, server_name: str):
     """Unzip a file in the server directory"""
     current_user = await get_current_user(request)
@@ -258,7 +322,7 @@ async def unzip_file(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{server_name}/files/copy")
+@router.post("/files/copy")
 async def copy_file(request: Request, server_name: str):
     """Copy a file in the server directory"""
     current_user = await get_current_user(request)
@@ -289,7 +353,7 @@ async def copy_file(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{server_name}/files/move")
+@router.post("/files/move")
 async def move_file(request: Request, server_name: str):
     """Move a file in the server directory"""
     current_user = await get_current_user(request)
@@ -316,7 +380,7 @@ async def move_file(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{server_name}/files/download/{path:path}")
+@router.get("/files/download/{path:path}")
 async def download_file(request: Request, server_name: str, path: str):
     """Download a specific file from the server directory"""
     current_user = await get_current_user(request)

@@ -26,6 +26,7 @@ from .utils import (
     NotFoundError,
     format_datetime,
 )
+
 all = [
     "File",
     "Dependency",
@@ -50,6 +51,7 @@ class File:
     """
 
     def __init__(self, data: Dict[str, Any]):
+        self._data = dict(data)
         self.hashes: Dict[str, str] = validate_input(
             data.get("hashes", {}), "hashes", required=True
         )
@@ -97,6 +99,14 @@ class File:
 
     def __repr__(self) -> str:
         return f"<File filename='{self.filename}' size={self.size}>"
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the File instance to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the File
+        """
+        return self._data
 
 
 class Dependency:
@@ -111,6 +121,7 @@ class Dependency:
     """
 
     def __init__(self, data: Dict[str, Any]):
+        self._data = dict(data)
         self.version_id: str = validate_input(
             data.get("version_id"), "version_id", required=False
         )
@@ -128,6 +139,14 @@ class Dependency:
 
     def __repr__(self) -> str:
         return f"<Dependency project='{self.project_id}' version='{self.version_id}'>"
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the Dependency instance to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the Dependency
+        """
+        return self._data
 
 
 class Version:
@@ -153,6 +172,7 @@ class Version:
     """
 
     def __init__(self, data: Dict[str, Any]):
+        self._data = dict(data)
         self.id: str = validate_input(data.get("id"), "id", required=True)
         self.name: str = validate_input(data.get("name"), "name", required=True)
         self.version_number: str = validate_input(
@@ -201,14 +221,31 @@ class Version:
             File(file_data) for file_data in data.get("files", [])
         ]
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the Version instance to a dictionary."""
+        return self._data
+
     def __repr__(self) -> str:
         return f"<Version id='{self.id}' name='{self.name}' version='{self.version_number}'>"
 
-    def get_primary_file(self) -> Optional[File]:
-        """Get the primary file for this version."""
-        return next((file for file in self.files if file.primary), None)
+    def get_primary_file(self) -> File:
+        """
+        Get the primary file for this version.
+        Returns:
+            File: The primary file object
+        """
+        return next((file for file in self.files if file.primary), self.files[0])
 
-    async def download_primary(self, path: str | Path) -> Optional[str]:
+    @property
+    def primary_file(self) -> File:
+        """
+        Get the primary file for this version.
+        Returns:
+            File: The primary file object
+        """
+        return self.get_primary_file()
+
+    async def download_primary(self, path: str | Path) -> str:
         """
         Download the primary file for this version.
 
@@ -218,10 +255,8 @@ class Version:
         Returns:
             Optional[str]: Path to the downloaded file, or None if no primary file
         """
-        primary = self.get_primary_file()
-        if primary:
-            return await primary.download(path)
-        return None
+
+        return await self.primary_file.download(path)
 
 
 class Versions:
@@ -245,13 +280,14 @@ class Versions:
             http_client (HTTPClient): The HTTP client to use for API requests
         """
         self.http_session = http_client
-    
-    async def get_versions(self, version_ids: List[str]) -> List[Version]:
+
+    async def get_versions(self, version_ids: List[str], all: bool = True) -> List[Version]:
         """
         Fetch all versions for a given project.
 
         Args:
             project_id (str): ID of the project
+            all (bool): get All Versions, WARNING: it might take a lot time if the projects have a lot of versions
 
         Returns:
             List[Version]: List of versions for the project
@@ -260,14 +296,14 @@ class Versions:
             NotFoundError: If the project is not found
             ValidationError: If the API returns invalid data
         """
-        logger.info(f"Fetching versions: {version_ids}")
+        logger.info(f"Fetching versions: {len(version_ids)}")
         try:
-            versions_data = await self.http_session._get_versions(version_ids)
+            versions_data = await self.http_session._get_versions(version_ids, all)
             return [Version(data) for data in versions_data]
         except Exception as e:
             logger.error(f"Failed to fetch versions: {str(e)}", exc_info=True)
             raise NotFoundError(f"Failed to fetch versions: {str(e)}")
-    
+
     async def get_version(self, version_id: str) -> Version:
         """
         Fetch a specific version for a given project.

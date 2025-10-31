@@ -4,7 +4,7 @@ from .utils import get_server_instance
 
 router = APIRouter(tags=["settings"])
 
-@router.post("/{server_name}/eula/accept")
+@router.post("/eula/accept")
 async def accept_eula(request: Request, server_name: str):
     """Accept the Minecraft EULA for a server"""
     current_user = await get_current_user(request)
@@ -16,7 +16,7 @@ async def accept_eula(request: Request, server_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{server_name}/eula/status")
+@router.get("/eula/status")
 async def check_eula_status(request: Request, server_name: str):
     """Check if EULA has been accepted for a server"""
     current_user = await get_current_user(request)

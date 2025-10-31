@@ -44,6 +44,7 @@ class CategoryTag:
     """
 
     def __init__(self, data: Dict[str, Any]):
+        self._data = dict(data)
         self.icon: str = validate_input(data.get("icon"), "icon", required=True)
         self.name: str = validate_input(data.get("name"), "name", required=True)
         self.project_type: str = validate_input(data.get("project_type"), "project_type", required=True)
@@ -51,6 +52,15 @@ class CategoryTag:
     
     def __repr__(self) -> str:
         return f"<CategoryTag name='{self.name}' type='{self.project_type}'>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the CategoryTag instance to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the CategoryTag
+        """
+        return self._data
 
 class LoaderTag:
     """
@@ -63,6 +73,7 @@ class LoaderTag:
     """
 
     def __init__(self, data: Dict[str, Any]):
+        self._data = dict(data)
         self.icon: str = validate_input(data.get("icon"), "icon", required=True)
         self.name: str = validate_input(data.get("name"), "name", required=True)
         self.supported_project_types: List[str] = validate_input(
@@ -73,6 +84,15 @@ class LoaderTag:
     
     def __repr__(self) -> str:
         return f"<LoaderTag name='{self.name}'>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the LoaderTag instance to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the LoaderTag
+        """
+        return self._data
 
 class GameVersionTag:
     """
@@ -86,6 +106,7 @@ class GameVersionTag:
     """
 
     def __init__(self, data: Dict[str, Any]):
+        self._data = dict(data)
         self.version: str = validate_input(data.get("version"), "version", required=True)
         self.version_type: VersionType = VersionType(
             validate_input(data.get("version_type"), "version_type", required=True)
@@ -101,6 +122,14 @@ class GameVersionTag:
     
     def __repr__(self) -> str:
         return f"<GameVersionTag version='{self.version}' type='{self.version_type.value}'>"
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the GameVersionTag instance to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the GameVersionTag
+        """
+        return self._data
 
 class Tags:
     """

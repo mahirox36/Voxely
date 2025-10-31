@@ -1,5 +1,6 @@
 from enum import StrEnum
 import os
+from typing import Optional
 import requests
 import json
 import time
@@ -7,6 +8,7 @@ from rich import print
 from rich.progress import Progress, DownloadColumn, TransferSpeedColumn
 import logging
 import shutil
+import asyncio
 from pathlib import Path
 
 # Set up a dedicated logger for the JAR module
@@ -24,14 +26,17 @@ class ServerType(StrEnum):
     FABRIC = "fabric"
     PAPER = "paper"
     PURPUR = "purpur"
-    CUSTOM = "custom"
+    FORGE = "forge"
+    NEOFORGE = "neoforge"
 
 class MinecraftServerDownloader:
     def __init__(self):
         self.version_manifest_url = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
         self.paper_api_url = "https://api.papermc.io/v2/projects/paper"
         self.fabric_meta_url = "https://meta.fabricmc.net/v2/versions"
-        self.forge_api_url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+        self.forge_promotions_url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+        self.forge_maven_url = "https://maven.minecraftforge.net/net/minecraftforge/forge"
+        self.neoforge_maven_url = "https://maven.neoforged.net/releases/net/neoforged/neoforge"
         self.purpur_api_url = "https://api.purpurmc.org/v2/purpur"
         
         self.cache_dir = "cache"
@@ -143,6 +148,7 @@ class MinecraftServerDownloader:
             return []
 
     def downloadVanilla(self, version: str):
+        """Download Vanilla server JAR (ready to use)."""
         jar_logger.info(f"Downloading vanilla version {version}")
         versions = self.get_vanilla_versions(True)
         version = str(version)
@@ -204,6 +210,7 @@ class MinecraftServerDownloader:
             return []
     
     def downloadPaper(self, version: str, build='latest'):
+        """Download Paper server JAR (ready to use)."""
         jar_logger.info(f"Downloading Paper version {version} (build={build})")
         versions = self.get_paper_versions()
         version = str(version)
@@ -253,7 +260,7 @@ class MinecraftServerDownloader:
             if response.status_code == 200:
                 version_data = response.json()
                 if include_snapshots:
-                    versions = version_data  # The API already returns a list of versions
+                    versions = version_data
                 else:
                     versions = [v for v in version_data if v.get('stable', False)]
                 versions = [v['version'] for v in versions]
@@ -268,6 +275,7 @@ class MinecraftServerDownloader:
             return []
 
     def downloadFabric(self, version: str):
+        """Download Fabric server JAR (ready to use, no installer needed)."""
         jar_logger.info(f"Downloading Fabric version {version}")
         versions = self.get_fabric_versions(True)
         version = str(version)
@@ -308,7 +316,7 @@ class MinecraftServerDownloader:
             installer_version = installer_data[0]['version']
             jar_logger.info(f"Using Fabric installer version: {installer_version}")
 
-            # Construct the download URL for the Fabric server launcher
+            # Construct the download URL for the Fabric server launcher (ready to use JAR)
             download_url = f"https://meta.fabricmc.net/v2/versions/loader/{version}/{loader_version}/{installer_version}/server/jar"
             jar_logger.debug(f"Downloading from: {download_url}")
             
@@ -343,7 +351,7 @@ class MinecraftServerDownloader:
             return []
 
     def downloadPurpur(self, version: str, build='latest'):
-        """Download Purpur server jar."""
+        """Download Purpur server JAR (ready to use)."""
         jar_logger.info(f"Downloading Purpur version {version} (build={build})")
         versions = self.get_purpur_versions()
         if version not in versions:
@@ -368,3 +376,158 @@ class MinecraftServerDownloader:
         except Exception as e:
             jar_logger.error(f"Error in downloadPurpur: {str(e)}")
             return False
+
+    def get_forge_versions(self):
+        """Get all available Forge versions from the promotions file."""
+        jar_logger.info("Getting Forge versions")
+        cache_data = self._get_cached_data('forge_versions')
+        if cache_data:
+            jar_logger.info(f"Found {len(cache_data)} cached Forge versions")
+            return cache_data
+
+        try:
+            response = requests.get(self.forge_promotions_url)
+            if response.status_code == 200:
+                promotions = response.json()
+                # Extract unique minecraft versions from the promotions
+                versions = {}
+                for key in promotions['promos']:
+                    if '-' in key:
+                        mc_version = key.split('-')[0]
+                        forge_version = promotions['promos'][key]
+                        versions[mc_version] = forge_version
+                
+                jar_logger.info(f"Retrieved {len(versions)} Forge versions")
+                self._save_cache('forge_versions', versions)
+                return versions
+            else:
+                jar_logger.error(f"Failed to fetch Forge versions. Status code: {response.status_code}")
+                return {}
+        except Exception as e:
+            jar_logger.error(f"Error fetching Forge versions: {str(e)}")
+            return {}
+
+    async def downloadForge(self, mc_version: str, forge_version: Optional[str] = None):
+        """Download Forge installer and optionally install the server (requires installer to be run)."""
+        jar_logger.info(f"Downloading Forge for Minecraft {mc_version}, forge_version={forge_version}")
+        
+        try:
+            # If no forge version specified, get the recommended one
+            if not forge_version:
+                versions = self.get_forge_versions()
+                if mc_version not in versions:
+                    jar_logger.error(f"No Forge version found for Minecraft {mc_version}")
+                    return False
+                forge_version = versions[mc_version]
+                jar_logger.info(f"Using recommended Forge version: {forge_version}")
+            
+            # Construct the full version string
+            full_version = f"{mc_version}-{forge_version}"
+            
+            # Download URL
+            download_url = f"{self.forge_maven_url}/{full_version}/forge-{full_version}-installer.jar"
+            installer_path = f"versions/forge-{full_version}-installer.jar"
+            
+            jar_logger.debug(f"Downloading from: {download_url}")
+            result = self._download_with_progress(download_url, installer_path)
+            
+            if not result:
+                jar_logger.error("Failed to download Forge installer")
+                return False
+            
+            
+            return installer_path
+            
+        except Exception as e:
+            jar_logger.error(f"Error in downloadForge: {str(e)}")
+            return False
+
+    def get_neoforge_versions(self):
+        """Get available NeoForge versions by scraping the Maven repository."""
+        jar_logger.info("Getting NeoForge versions")
+        cache_data = self._get_cached_data('neoforge_versions')
+        if cache_data:
+            jar_logger.info(f"Found {len(cache_data)} cached NeoForge versions")
+            return cache_data
+
+        try:
+            # NeoForge versions are listed in their Maven repository
+            # We'll parse the maven-metadata.xml file
+            metadata_url = f"{self.neoforge_maven_url}/maven-metadata.xml"
+            response = requests.get(metadata_url)
+            
+            if response.status_code == 200:
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(response.content)
+                
+                # Extract versions from the metadata
+                versions = []
+                for version in root.findall('.//version'):
+                    versions.append(version.text)
+                
+                jar_logger.info(f"Retrieved {len(versions)} NeoForge versions")
+                self._save_cache('neoforge_versions', versions)
+                return versions
+            else:
+                jar_logger.error(f"Failed to fetch NeoForge versions. Status code: {response.status_code}")
+                return []
+        except Exception as e:
+            jar_logger.error(f"Error fetching NeoForge versions: {str(e)}")
+            return []
+
+    async def downloadNeoForge(self, neoforge_version: str):
+        """Download NeoForge installer and optionally install the server (requires installer to be run)."""
+        jar_logger.info(f"Downloading NeoForge version {neoforge_version}")
+        
+        try:
+            # Download URL
+            download_url = f"{self.neoforge_maven_url}/{neoforge_version}/neoforge-{neoforge_version}-installer.jar"
+            installer_path = f"versions/neoforge-{neoforge_version}-installer.jar"
+            
+            jar_logger.debug(f"Downloading from: {download_url}")
+            result = self._download_with_progress(download_url, installer_path)
+            
+            if not result:
+                jar_logger.error("Failed to download NeoForge installer")
+                return False
+            
+            return installer_path
+            
+        except Exception as e:
+            jar_logger.error(f"Error in downloadNeoForge: {str(e)}")
+            return False
+
+
+# Example usage
+async def main():
+    downloader = MinecraftServerDownloader()
+    
+    print("[bold cyan]Minecraft Server Downloader[/bold cyan]\n")
+    
+    # Example: Download Fabric (direct JAR, no installation needed)
+    print("[yellow]Downloading Fabric 1.20.1...[/yellow]")
+    fabric_jar = downloader.downloadFabric("1.20.1")
+    if fabric_jar:
+        print(f"[green]✓ Fabric server JAR ready: {fabric_jar}[/green]")
+        print("[green]  (Ready to use - just run with java -jar)[/green]")
+    
+    # Example: Download and install Forge server (async)
+    print("\n[yellow]Downloading Forge 1.20.1...[/yellow]")
+    forge_result = await downloader.downloadForge("1.20.1")
+    if forge_result:
+        print(f"[green]✓ Forge server ready at: {forge_result}[/green]")
+    
+    # Example: Download and install NeoForge server (async)
+    print("\n[yellow]Downloading NeoForge 21.0.167...[/yellow]")
+    neoforge_result = await downloader.downloadNeoForge("21.0.167")
+    if neoforge_result:
+        print(f"[green]✓ NeoForge server ready at: {neoforge_result}[/green]")
+    
+    # Example: Just download installer without installing
+    print("\n[yellow]Downloading Forge installer only...[/yellow]")
+    installer = await downloader.downloadForge("1.19.4")
+    if installer:
+        print(f"[green]✓ Installer saved at: {installer}[/green]")
+
+if __name__ == "__main__":
+    asyncio.run(main())

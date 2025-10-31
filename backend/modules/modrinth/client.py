@@ -33,7 +33,10 @@ Example:
     ...             print(f"Downloaded to {path}")
 """
 
+from pathlib import Path
 from typing import Optional, List, Union, Dict, Any
+
+from modules.modrinth.modpack import Modpack
 from .http import HTTPClient
 from .project import Project, Projects, SearchResult
 from .versions import Version, File, Versions
@@ -102,6 +105,9 @@ class Client(Projects, Tags, Versions):
     async def close(self):
         """Close the client and clean up resources."""
         await self.http.close()
+    
+    async def open_modpack(self, path: Union[Path, str]):
+        return Modpack(path, self.http.session)
 
     # Re-export common exceptions for convenience
     ModrinthException = ModrinthException

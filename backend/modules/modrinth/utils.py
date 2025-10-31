@@ -35,7 +35,9 @@ all = [
     "VersionType",
     "DependencyType",
     "VersionStatus",
-    "logger"
+    "logger",
+    "Facet",
+    "FacetType",
 ]
 
 
@@ -146,6 +148,50 @@ def list_to_query_param(values: list[str], param) -> str:
     json_array = dumps(values)
     logger.debug(json_array)
     return f"{param}={quote(json_array)}"
+
+class FacetType(StrEnum):
+    """Enum for Modrinth facet types."""
+    CATEGORIES = "categories"
+    VERSIONS = "versions"
+    LOADER = "categories"
+    PROJECT_TYPE = "project_type"
+    LICENSE = "license"
+    SERVER_SIDE = "server_side"
+    CLIENT_SIDE = "client_side"
+    OPEN_SOURCE = "open_source"
+    TITLE = "title"
+    AUTHOR = "author"
+    FOLLOWS = "follows"
+    PROJECT_ID = "project_id"
+    DOWNLOADS = "downloads"
+    COLOR = "color"
+    CREATED_TIMESTAMP = "created_timestamp"
+    MODIFIED_TIMESTAMP = "modified_timestamp"
+    DATE_CREATED = "date_created"
+    DATE_MODIFIED = "date_modified"
+
+class Facet:
+    """
+    Represents a search facet for Modrinth API queries.
+    
+    Attributes:
+        type (FacetType): The name of the facet
+        comparator (str): The comparator used in the facet
+        value (str): The value for the facet
+    """
+    def __init__(self, type: FacetType, comparator: str, value: str):
+        self.type = type
+        self.comparator = comparator
+        self.value = value
+
+    def to_list(self) -> list[str]:
+        """
+        Convert the Facet instance to a list representation.
+        
+        Returns:
+            list[str]: List representation of the Facet
+        """
+        return [f"{self.type.value}{self.comparator}{self.value}"]
 
 class ProjectType(StrEnum):
     """Enum for Modrinth project types."""

@@ -6,15 +6,10 @@ from rich import print
 import json
 from datetime import datetime
 
+from modules.jar import ServerType
+
 class PropertyValidationError(Exception):
     pass
-
-class ServerType(StrEnum):
-    VANILLA = auto()
-    PAPER = auto()
-    FABRIC = auto()
-    FORGE = auto()
-    PURPUR = auto()
 
 class Gamemode(StrEnum):
     SURVIVAL = "survival"

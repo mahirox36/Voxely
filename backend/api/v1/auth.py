@@ -1,199 +1,169 @@
-from datetime import datetime, timedelta
-import json
+from datetime import UTC, datetime, timedelta
+import logging
 import os
-from typing import Optional, Union
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, status, Request
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+import secrets
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
+from dotenv import load_dotenv, set_key
+
+load_dotenv()
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Security configuration
-SECRET_KEY = "your-secret-key-stored-in-env"  # Move to env vars in production
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 90
+logger = logging.getLogger(__name__)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-# Fix token URL to match the actual endpoint
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+# Security configuration
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+ROOT_PASSWORD = os.getenv("ROOT_PASSWORD")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+ENV_FILE = ".env"
+
+# Initialize root password if not exists
+def initialize_root_password():
+    """Generate and save root password if it doesn't exist"""
+    if not ROOT_PASSWORD:
+        # Generate random password
+        new_password = secrets.token_urlsafe(16)
+        
+        # Save to .env file
+        if not os.path.exists(ENV_FILE):
+            with open(ENV_FILE, 'w') as f:
+                f.write(f'SECRET_KEY={SECRET_KEY}\n')
+                f.write(f'ROOT_PASSWORD={new_password}\n')
+        else:
+            set_key(ENV_FILE, 'ROOT_PASSWORD', new_password)
+        
+        logger.info("=" * 50)
+        logger.info("ROOT PASSWORD GENERATED!")
+        logger.info(f"Password: {new_password}")
+        logger.info("Save this password - it's stored in .env file")
+        logger.info("=" * 50)
+        
+        return new_password
+    return ROOT_PASSWORD
+
+# Get or generate root password
+ROOT_PASSWORD = initialize_root_password()
 
 # Models
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    token_type: str = "bearer"
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
+class UserResponse(BaseModel):
+    username: str = "root"
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
-    email: Optional[str] = None
+# JWT utilities
+def create_access_token() -> str:
+    """Create a JWT access token for root user"""
+    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {
+        "sub": "root",
+        "exp": expire,
+        "iat": datetime.now(UTC)
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-class User(BaseModel):
-    username: str
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    disabled: Optional[bool] = None
+def decode_token(token: str) -> str:
+    """Decode JWT token and return username"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub") # type: ignore
+        if username != "root":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user"
+            )
+        return username
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
 
-class UserInDB(User):
-    hashed_password: str
-
-# User database simulation
-users = {}
-
-def save_users():
-    os.makedirs('data', exist_ok=True)
-    with open('data/users.json', 'w') as f:
-        json.dump(users, f)
-
-def load_users():
-    if os.path.exists('data/users.json'):
-        with open('data/users.json', 'r') as f:
-            return json.load(f)
-    return {}
-
-users = load_users()
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def get_user(db, username: str):
-    if username in db:
-        user_dict = db[username]
-        return UserInDB(**user_dict)
-
-def authenticate_user(db, username: str, password: str):
-    user = get_user(db, username)
-    if not user:
-        return False
-    if not verify_password(password, user.hashed_password):
-        return False
-    return user
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-# Fixed authentication dependency that works with "Bearer {token}" format
-async def get_current_user(request: Request) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    # Get the Authorization header
-    if isinstance(request, WebSocket):
+# Authentication dependency
+async def get_current_user(request: Request) -> UserResponse:
+    """Get the current authenticated user from request"""
+    # Get Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
         auth_header = request.query_params.get("token")
-    else:
-        auth_header = request.headers.get("Authorization")
     
     if not auth_header:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated - missing Authorization header",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Missing Authorization header",
+            headers={"WWW-Authenticate": "Bearer"}
         )
     
-    # Print the auth header for debugging
-    print(f"Auth header: {auth_header}")
-    
-    # Handle the "Bearer {token}" format
+    # Parse "Bearer {token}" format
     parts = auth_header.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication format. Use 'Bearer {token}'",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid Authorization header format. Expected 'Bearer {token}'",
+            headers={"WWW-Authenticate": "Bearer"}
         )
     
     token = parts[1]
+    username = decode_token(token)
     
-    try:
-        # Decode and verify the JWT token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        
-        token_data = TokenData(username=username)
-    except JWTError as e:
-        print(f"JWT Error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except Exception as e:
-        print(f"Authentication error: {str(e)}")
-        raise credentials_exception
-    
-    # Get the user from the database
-    if token_data.username is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token: username is missing"
-        )
-    user = get_user(users, username=token_data.username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    
-    return user
+    return UserResponse(username=username)
 
+# Routes
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(users, form_data.username, form_data.password)
-    if not user:
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login as root user and get access token"""
+    # Check credentials
+    if form_data.username != "root":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid username. Only 'root' user exists.",
+            headers={"WWW-Authenticate": "Bearer"}
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    print(f"Generated token for user {user.username}")
-    return {"access_token": access_token, "token_type": "Bearer"}
-
-@router.post("/signup", response_model=User)
-async def signup(user_data: UserCreate):
-    if user_data.username in users:
+    
+    if form_data.password != ROOT_PASSWORD:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password",
+            headers={"WWW-Authenticate": "Bearer"}
         )
-    hashed_password = get_password_hash(user_data.password)
-    user = {
-        "username": user_data.username,
-        "hashed_password": hashed_password,
-        "email": user_data.email,
-        "disabled": False
+    
+    access_token = create_access_token()
+    return Token(access_token=f"{access_token}")
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(request: Request):
+    """Get current user info"""
+    current_user = await get_current_user(request)
+    return current_user
+
+@router.post("/verify")
+async def verify_token(request: Request):
+    """Verify token is valid"""
+    current_user = await get_current_user(request)
+    return {
+        "valid": True,
+        "username": current_user.username
     }
-    users[user_data.username] = user
-    save_users()
-    return user
 
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
-    return {"msg": "Successfully logged out"}
+async def logout(request: Request):
+    """Logout endpoint"""
+    current_user = await get_current_user(request)
+    return {"message": "Successfully logged out"}
 
-@router.get("/verify")
-async def verify_token(current_user: User = Depends(get_current_user)):
-    """Verify that the authentication token is valid"""
-    return {"status": "success", "username": current_user.username}
+@router.get("/password")
+async def get_password():
+    """Get the root password (only for local development!)"""
+    return {
+        "username": "root",
+        "password": ROOT_PASSWORD,
+        "warning": "This endpoint should be disabled in production!"
+    }

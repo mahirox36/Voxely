@@ -2,25 +2,77 @@ from __future__ import annotations
 import asyncio
 
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+import sys
 from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.theme import Theme
 import logging
-from api.v1 import router as api_v1_router
 
 
+custom_theme = Theme(
+    {
+        "logging.level.debug": "bold italic #9b59b6",
+        "logging.level.info": "bold #00c3ff",
+        "logging.level.warning": "bold italic #ffae00",
+        "logging.level.error": "bold #ff5c8a",
+        "logging.level.critical": "bold blink reverse #ff0080 on #fff0f5",
+    }
+)
+console = Console(force_terminal=True, theme=custom_theme)
+rich_handler = RichHandler(
+    level=logging.INFO,
+    console=console,
+    markup=True,
+    rich_tracebacks=True,
+    show_time=False,
+    show_path=False,
+)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_logger.handlers.clear()
+
+# Add handlers to root logger
+root_logger.addHandler(rich_handler)
+
+for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "auth"):
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    logger.propagate = False  # Prevent double logs
+    logger.setLevel(logging.DEBUG if "access" not in name else logging.INFO)
+    logger.addHandler(rich_handler)
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.critical(
+        "Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback)
+    )
+    console.print_exception(show_locals=True)
+
+
+sys.excepthook = handle_exception
+
+logger = logging.getLogger(__name__)
 
 # Create the FastAPI app at module level
+from api.v1 import router as api_v1_router
 app = FastAPI(
-    title="MineGimme API",
-    description="API for MineGimme (Local Minecraft Server Management and Hosting)",
+    title="Voxely API",
+    description="API for Voxely (Local Minecraft Server Management and Hosting)",
     version="1.0.0",
     # Disable automatic redirects for routes with/without trailing slashes
     redirect_slashes=False,
-    docs_url=None,  # Disable default docs URL
+    # docs_url=None,  # Disable default docs URL
 )
 
 # Add CORS middleware
@@ -38,9 +90,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Add middleware to debug auth headers
 
-@app.get("/docs", include_in_schema=False)
-async def custom_docs():
-    return FileResponse("static/stoplight/index.html")
+# @app.get("/docs", include_in_schema=False)
+# async def custom_docs():
+#     return FileResponse("static/stoplight/index.html")
 
 class APIConfig:
     def __init__(
@@ -66,7 +118,7 @@ class APIServer:
         self,
         config: APIConfig,
     ) -> None:
-        self.logger = logging.getLogger("bot")
+        self.logger = logging.getLogger("api")
         self.config = config
         self.start_time = datetime.now()
         self.app = app

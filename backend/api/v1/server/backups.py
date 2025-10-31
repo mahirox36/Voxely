@@ -13,7 +13,7 @@ class BackupInfo(BaseModel):
     created: str
     path: str
 
-@router.get("/{server_name}/backups", response_model=List[BackupInfo])
+@router.get("/backups", response_model=List[BackupInfo])
 async def list_backups(request: Request, server_name: str):
     """List available backups"""
     current_user = await get_current_user(request)
@@ -41,7 +41,7 @@ async def list_backups(request: Request, server_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{server_name}/backups")
+@router.post("/backups")
 async def create_backup(request: Request, server_name: str):
     """Create a new backup"""
     current_user = await get_current_user(request)
@@ -57,7 +57,7 @@ async def create_backup(request: Request, server_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{server_name}/backups/{backup_name}/restore")
+@router.post("/backups/{backup_name}/restore")
 async def restore_backup(request: Request, server_name: str, backup_name: str):
     """Restore from a backup"""
     current_user = await get_current_user(request)

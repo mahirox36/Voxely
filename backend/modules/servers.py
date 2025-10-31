@@ -3,6 +3,7 @@ from asyncio.subprocess import Process
 from datetime import datetime
 from enum import StrEnum
 import os
+import platform
 import re
 import threading
 from typing import List, Dict, Optional, Any, Union
@@ -14,6 +15,9 @@ import shutil
 import json
 import subprocess
 import socket
+
+from modules.modrinth.project import Project
+from modules.modrinth.versions import Version
 from .jar import MinecraftServerDownloader
 from .serverProperties import ServerProperties
 from pathlib import Path
@@ -43,6 +47,11 @@ _server_cache = {
     "cache_duration": 10,  # Cache duration in seconds
 }
 
+
+@dataclass
+class ClientConnection:
+    websocket: WebSocket
+    id: str
 
 class ServerStatus(StrEnum):
     ONLINE = "online"
@@ -162,16 +171,24 @@ class ServerMetrics:
     uptime: str = "Offline"
 
 
+@dataclass
+class Addon:
+    project: Project
+    version: Version
+    path: Path
+
+@dataclass
+class CachePlayer:
+    uuid: str
+    name: str
+    expiresOn: str
+
 class Server:
     def __init__(
         self,
         name: str,
         type: ServerType = ServerType.PAPER,
-        version: str = "1.21.1",
-        min_ram: int = 1024,
-        max_ram: int = 1024,
-        port: int = 25565,
-        players_limit: int = 20,
+        version: str = "1.21.1"
     ):
         self.name = name
         self.path = Path("servers") / name
@@ -181,21 +198,15 @@ class Server:
         self._lock = threading.Lock()
         self._shutdown_event = threading.Event()
         self.started_at = None  # Initialize started_at attribute here
-        self.websockets: List[WebSocket] = []
-        match type:
-            case ServerType.PAPER | ServerType.PURPUR:
-                self.addon_path = self.path / "plugins"
-            case ServerType.FABRIC:
-                self.addon_path = self.path / "mods"
-            case _:
-                self.addon_path = None
+        self.connections: List[ClientConnection] = []
+        self.addons: List[Addon] = []
 
         self.serverExists = self.path.exists()
         # Setup logger for this server instance
         self.logger = self._setup_logger()
         self.logger.info(f"Initializing server {name} (type={type}, version={version})")
 
-        self.Properties = ServerProperties(self.path / "server.properties")
+        # self.Properties = ServerProperties(self.path / "server.properties")
         self._rcon: Optional[MCRcon] = None
         self._rcon_lock = threading.Lock()
         self.process: Optional[Process] = None
@@ -210,13 +221,12 @@ class Server:
         max_ram: int = 1024,
         port: int = 25565,
         players_limit: int = 20,
-        jar: Optional[str] = None
     ):
-        self = cls(name, type, version, min_ram, max_ram, port, players_limit)
+        self = cls(name, type, version)
         if not self.serverExists:
             self.logger.info(f"Creating new server at {self.path}")
             await self._create_new_server(
-                type, version, min_ram, max_ram, port, players_limit, jar
+                type, version, min_ram, max_ram, port, players_limit
             )
         else:
             await self._load_existing_server()
@@ -263,13 +273,23 @@ class Server:
 
     @contextmanager
     def rcon_connection(self):
+        with open(self.path / "server.properties", "r") as f:
+            lines = f.readlines()
+        for line in lines:
+            if line.startswith("rcon.password="):
+                password = line.split("=")[1].replace("\n", "")
+                break
+        else:
+            self.logger.error("No Password found")
+            raise
+        
         with self._rcon_lock:  # Use lock to prevent concurrent RCON operations
             try:
                 if self._rcon is None:
                     self.logger.debug("Creating new RCON connection")
                     self._rcon = MCRcon(
                         self.ip["private"].split(":")[0],
-                        "sdu923rf873bdf4iu53aw2",
+                        password,
                         port=25575,
                     )
                     self._rcon.connect()
@@ -287,13 +307,36 @@ class Server:
                         )
                     self._rcon = None
                 raise
+    
+    async def world_folder(self) -> Path:
+        default = self.path / "world"
+        properties = self.path / "server.properties"
 
+        if default.exists() or not properties.exists():
+            return default
+
+        text = await asyncio.to_thread(properties.read_text, "utf-8")
+        matched = re.search(r"^level-name=(.*?)$", text, re.MULTILINE)
+        if matched:
+            level_name = matched.group(1).strip()
+            return self.path / level_name
+
+        return default
+
+    async def cached_players(self) -> Dict[str, str]:
+        usercache = self.path / "usercache.json"
+        data = await asyncio.to_thread(lambda: json.loads(usercache.read_text("utf-8")))
+
+        players: Dict[str, str] = {}
+        for item in data:
+            players[item.get("uuid", "")] = item.get("name", "")
+        return players
     async def backup_server(self) -> Optional[str]:
         self.logger.info("Starting server backup")
         if self.status != ServerStatus.OFFLINE:
             self.logger.debug("Server is online, saving world before backup")
             await self.send_command("save-all")
-            time.sleep(2)
+            await asyncio.sleep(2)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = self.backup_path / f"{self.name}_{timestamp}.zip"
@@ -353,7 +396,7 @@ class Server:
                                     self.logger.debug(f"TPS: {self._metrics.tps}")
                     except Exception as e:
                         self.logger.debug(f"Failed to get TPS: {e}")
-            
+
             await asyncio.sleep(5)
 
     async def get_metrics(
@@ -396,11 +439,7 @@ class Server:
                 return {
                     "cpu_usage": f"{self._metrics.cpu_usage:.1f}%",
                     "memory_usage": f"{self._metrics.memory_usage:.1f} MB",
-                    "player_count": (
-                        f"{self._metrics.player_count}/{self.players_limit}"
-                        if hasattr(self, "players_limit")
-                        else "0/0"
-                    ),
+                    "player_count": str(self._metrics.player_count),
                     "uptime": (
                         self._metrics.uptime
                         if self.status == ServerStatus.ONLINE
@@ -487,6 +526,7 @@ class Server:
                 "jar_full_path": str(self.path / "server.jar"),
                 "port": self.port,
                 "players": [],
+                "addons": [],
                 "logs": [],
                 "is_valid_server": True,
             }
@@ -532,6 +572,7 @@ class Server:
                     "jar_full_path": str(self.path / "server.jar"),
                     "port": self.port,
                     "players": [],
+                    "addons": [],
                     "logs": [],
                     "is_valid_server": True if (has_jar and has_eula) else False,
                 }
@@ -573,6 +614,18 @@ class Server:
                     if self.data["started_at"] != None
                     else None
                 )
+
+            if "addons" in self.data:
+                self.addons = [
+                    Addon(
+                        project=Project(addon["project"]),
+                        version=Version(addon["version"]),
+                        path=Path(addon["path"]),
+                    )
+                    for addon in self.data["addons"]
+                ]
+                self.logger.info(self.addons)
+                self.logger.info(self.export_addons())
 
             if await self.is_server_online == False:
                 self.logger.debug("Server is not running, updating status to OFFLINE")
@@ -731,8 +784,6 @@ class Server:
 
                 # Final attempt - create minimal valid JSON with core fields
                 try:
-                    # Extract essential fields using regex patterns
-                    import re
 
                     name_match = re.search(r'"name"\s*:\s*"([^"]+)"', content)
                     name = name_match.group(1) if name_match else self.name
@@ -771,7 +822,6 @@ class Server:
         max_ram: int = 1024,
         port: int = 25565,
         players_limit: int = 20,
-        jar: Optional[str] = None
     ):
         self.logger.info(
             f"Creating new server: type={type}, version={version}, ram={min_ram}-{max_ram}MB, port={port}"
@@ -785,14 +835,13 @@ class Server:
         self.min_ram = min_ram
         self.max_ram = max_ram
         self.port = port
-        self.jar = jar
 
         # Create the server directory
         self.path.mkdir(parents=True, exist_ok=True)
 
         # Download the server JAR file
         self.logger.info(f"Downloading JAR for {type} version {version}")
-        self.jar_path = self._download_jar(type, version, jar)
+        self.jar_path = await self._download_jar(type, version)
 
         self.logger.debug(f"Download returned jar_path: {self.jar_path}")
 
@@ -805,11 +854,12 @@ class Server:
             self.logger.error(f"Failed to download JAR file: {self.jar_path}")
             self.jar_full_path = os.path.join(self.full_path, "server.jar")
             self.logger.warning(f"Using default JAR path: {self.jar_full_path}")
+        players = await self.players
 
         self.data = {
             "name": self.name,
             "created_at": self.created_at.isoformat(),
-            "started_at": self.started_at,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
             "status": self.status,
             "type": self.type,
             "version": self.version,
@@ -821,7 +871,15 @@ class Server:
             "full_path": self.full_path,
             "jar_full_path": self.jar_full_path,
             "port": self.port,
-            "players": await self.players,
+            "players": players,
+            "addons": [  # convert each Addon to a dict
+                {
+                    "project": addon.project.to_dict(),  # Project fields
+                    "version": addon.version.to_dict(),
+                    "path": str(addon.path),
+                }
+                for addon in self.addons
+            ],
             "logs": self.logs,
         }
 
@@ -835,7 +893,7 @@ class Server:
 max-players={players_limit}
 server-port={port}
 enable-rcon=true
-rcon.password=sdu923rf873bdf4iu53aw2
+rcon.password={self.name}$213
                     """
             )
 
@@ -843,7 +901,43 @@ rcon.password=sdu923rf873bdf4iu53aw2
     async def lengthPlayers(self):
         return len(await self.players)
 
-    def _download_jar(self, server_type: ServerType, version: str, jar: Optional[str] = None):
+    async def _run_installer(self):
+        """Run a Forge/NeoForge installer asynchronously and set up the server."""
+        # self.logger.info(f"Running installer: {installer_path} in directory: {install_dir}")
+        
+        try:
+            
+            process = await asyncio.create_subprocess_exec(
+                'java', '-jar', "server.jar", '--installServer',
+                cwd=self.path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Wait for the process to complete and get output
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                self.logger.info("Installer completed successfully")
+                
+                # return glob.glob(str(self.path / "forge*.jar"))[0]
+                return True
+            else:
+                self.logger.error(f"Installer failed with return code: {process.returncode}")
+                self.logger.error(f"stdout: {stdout.decode()}")
+                self.logger.error(f"stderr: {stderr.decode()}")
+                return False
+                
+        except FileNotFoundError:
+            self.logger.error("Java not found. Make sure Java is installed and in PATH")
+            return False
+        except Exception as e:
+            self.logger.error(f"Error running installer: {str(e)}")
+            return False
+
+    async def _download_jar(
+        self, server_type: ServerType, version: str
+    ):
         """Download the server JAR file for the specified type and version."""
         self.logger.info(
             f"Downloading server JAR: type={server_type}, version={version}"
@@ -887,9 +981,12 @@ rcon.password=sdu923rf873bdf4iu53aw2
             elif server_type == ServerType.PURPUR:
                 self.logger.debug(f"Downloading Fabric server JAR version {version}")
                 jar_path = downloader.downloadPurpur(version)
-            elif server_type == ServerType.CUSTOM and jar:
-                self.logger.debug(f"Downloading Fabric server JAR version {version}")
-                jar_path = jar
+            elif server_type == ServerType.FORGE:
+                self.logger.debug(f"Downloading Forge server JAR version {version}")
+                jar_path = downloader.downloadForge(version)
+            elif server_type == ServerType.NEOFORGE:
+                self.logger.debug(f"Downloading NeoForge server JAR version {version}")
+                jar_path = downloader.downloadNeoForge(version)
             else:
                 self.logger.error(f"Unsupported server type: {type}")
                 return False
@@ -926,7 +1023,8 @@ rcon.password=sdu923rf873bdf4iu53aw2
                     self.logger.error(
                         f"Destination file {dest_path} does not exist after copy!"
                     )
-
+                if server_type == ServerType.FORGE or server_type == ServerType.NEOFORGE:
+                    await self._run_installer()
                 return dest_path
             except Exception as e:
                 self.logger.error(f"Failed to copy JAR file: {e}", exc_info=True)
@@ -1006,10 +1104,71 @@ rcon.password=sdu923rf873bdf4iu53aw2
             self.logger.error(f"Error measuring process usage: {e}")
             return {"cpu": 0.0, "memory": 0.0}
 
+    async def add_addon(self, addon: Addon):
+        self.addons.append(addon)
+        await self._save_state()
+    
+    def get_addon(self, project_id: str) -> Optional[Addon]:
+        for addon in self.addons:
+            if addon.project.id == project_id:
+                return addon
+        return None
+    
+    def export_addons(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "project": addon.project.to_dict(),  # Project fields
+                "version": addon.version.to_dict(),
+                "path": str(addon.path),
+            }
+            for addon in self.addons
+        ]
+
+    async def remove_addon(self, project_id: str, delete_files: bool = False):
+        addon = self.get_addon(project_id)
+        if not addon:
+            self.logger.warning(f"Addon with project ID {project_id} not found")
+            return
+        self.addons.remove(addon)
+        if delete_files:
+            try:
+                addon.path.unlink()
+                self.logger.info(f"Deleted addon file: {addon.path}")
+            except Exception as e:
+                self.logger.error(f"Failed to delete addon file {addon.path}: {e}")
+        await self._save_state()
+    
+    @property
+    def addon_path(self) -> Optional[Path]:
+        if self.addon_type == "plugin":
+            return self.path / "plugins"
+        elif self.addon_type == "mod":
+            return self.path / "mods"
+        # elif self.type == ServerType.CUSTOM:
+        #     if (self.path / "mods").exists():
+        #         return self.path / "mods"
+        #     elif (self.path / "plugins").exists():
+        #         return self.path / "plugins"
+        # return None
+        
+    @property
+    def addon_type(self) -> Optional[str]:
+        if self.type == ServerType.PAPER or self.type == ServerType.PURPUR:
+            return "plugin"
+        elif self.type in [ServerType.FABRIC, ServerType.FORGE, ServerType.NEOFORGE]:
+            return "mod"
+        # elif self.type == ServerType.CUSTOM:
+        #     if (self.path / "mods").exists():
+        #         return "mod"
+        #     elif (self.path / "plugins").exists():
+        #         return "plugin"
+        return None
+
     async def _save_state(self):
         self.data["status"] = self.status
         self.data["players"] = await self.players
         self.data["logs"] = self.logs
+        self.data["addons"] = self.export_addons()
         self.data["started_at"] = (
             self.started_at.isoformat() if self.started_at != None else None
         )
@@ -1051,19 +1210,21 @@ rcon.password=sdu923rf873bdf4iu53aw2
         except Exception as e:
             self.logger.error(f"Failed to write eula.txt: {e}")
 
-    def append_websocket(self, websocket: WebSocket):
-        self.websockets.append(websocket)
+    def append_websocket(self, connection: ClientConnection):
+        self.connections.append(connection)
 
-    def remove_websocket(self, websocket: WebSocket):
-        self.websockets.remove(websocket)
+    def remove_websocket(self, connection: ClientConnection):
+        self.websockets = [
+            c for c in self.websockets if c.id != connection.id
+        ]
 
     async def send_websocket(self, data: Any):
-        self.logger.info(self.websockets)
-        for websocket in self.websockets:
+        self.logger.info(self.connections)
+        for connection in self.connections:
             try:
-                await websocket.send_json(data)
+                await connection.websocket.send_json(data)
             except:
-                self.remove_websocket(websocket)
+                self.remove_websocket(connection)
 
     async def start(self):
         if self.status != ServerStatus.OFFLINE:
@@ -1080,11 +1241,12 @@ rcon.password=sdu923rf873bdf4iu53aw2
             self.logger.info(
                 f"Attempting to download JAR file again for {self.type} version {self.version}"
             )
-            jar_result = self._download_jar(self.type, self.version, self.jar)
+            jar_result = await self._download_jar(self.type, self.version)
             if not jar_result:
                 self.logger.error("Failed to download JAR file, cannot start server")
                 return
             else:
+                self.jar_path = jar_result
                 self.logger.info(f"JAR downloaded successfully to {jar_result}")
         else:
             self.logger.debug(
@@ -1127,7 +1289,22 @@ rcon.password=sdu923rf873bdf4iu53aw2
             "-Daikars.new.flags=true",
         ]
 
-        start_command = f'java {" ".join(java_opts)} -jar "{self.jar_full_path}" nogui'
+        if self.type == ServerType.NEOFORGE or self.type == ServerType.FORGE:
+            
+            filename = "unix_args.txt" if platform.system() != "Windows" else "win_args.txt"
+            args_file = next((self.path / "libraries" / "net" / "minecraftforge" / "forge").rglob(filename), None)
+
+            if args_file:
+                txt = args_file.read_text().replace("\n", "")
+                start_command = f'java {txt} {" ".join(java_opts)} nogui'
+            else:
+                start_command = None
+        else:
+            start_command = f'java {" ".join(java_opts)} -jar "{self.jar_full_path}" nogui'
+        if not start_command:
+            self.logger.error("start command didn't get")
+            return False
+
         self.logger.info(f"Starting server with command: {start_command}")
 
         try:
@@ -1152,7 +1329,6 @@ rcon.password=sdu923rf873bdf4iu53aw2
             return
 
         self.output_task = asyncio.create_task(self._capture_output())
-        
 
         # Start performance monitoring
         asyncio.create_task(self.monitor_performance())
@@ -1192,13 +1368,16 @@ rcon.password=sdu923rf873bdf4iu53aw2
                 self.started_at = datetime.now()
                 await self._save_state()
                 await self.send_websocket({"type": "status", "data": "online"})
-            
+
             if "joined the game" in line:
-                await self.send_websocket({"type": "player_update", "data" : await self.players})
-            
+                await self.send_websocket(
+                    {"type": "player_update", "data": await self.players}
+                )
+
             if "left the game" in line:
-                await self.send_websocket({"type": "player_update", "data" : await self.players})
-                
+                await self.send_websocket(
+                    {"type": "player_update", "data": await self.players}
+                )
 
             # Handle startup failure cases
             elif "Failed to start the minecraft server" in line:
@@ -1251,7 +1430,7 @@ rcon.password=sdu923rf873bdf4iu53aw2
                 self.logger.debug("Attempting to save world and stop server via RCON")
                 with self.rcon_connection() as mcr:
                     mcr.command("save-all")
-                    time.sleep(2)
+                    await asyncio.sleep(2)
                     mcr.command("stop")
                 # close rcon connection
                 if self._rcon:
@@ -1315,14 +1494,18 @@ rcon.password=sdu923rf873bdf4iu53aw2
             self.logger.error(f"Failed to delete server directory: {e}")
 
     async def send_command(self, command: str):
-        if self.process and self.process.returncode is None and self.process.stdin:
-            self.logger.debug(f"Sending command: {command}")
-            try:
-                self.process.stdin.write((command + "\n").encode())
-                await self.process.stdin.drain()
-                self.logger.debug("Command sent successfully")
-            except Exception as e:
-                self.logger.error(f"Failed to send command: {e}")
+        if not self.process or self.process.returncode is not None or not self.process.stdin:
+            self.logger.warning("Cannot send command, process is not running")
+            return
+
+        try:
+            self.process.stdin.write((command + "\n").encode())
+            await asyncio.wait_for(self.process.stdin.drain(), timeout=2)
+            self.logger.debug(f"Command '{command}' sent successfully")
+        except asyncio.TimeoutError:
+            self.logger.error(f"Command '{command}' timed out — process not responding")
+        except Exception as e:
+            self.logger.error(f"Failed to send command '{command}': {e}")
 
     @property
     def ip(self):
