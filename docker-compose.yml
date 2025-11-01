@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: ./backend
+    container_name: voxely_backend
+    expose:
+      - "25401"
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    container_name: voxely_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped

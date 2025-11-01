@@ -3,7 +3,12 @@ mcrcon
 passlib
 psutil
 pydantic
-python_jose
-Requests
+python-jose
+requests
 rich
 uvicorn
+nbtlib
+python-dotenv
+python-multipart
+watchfiles
+aiohttp
