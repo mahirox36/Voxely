@@ -9,7 +9,7 @@ services:
     build: ./frontend
     container_name: voxely_frontend
     ports:
-      - "3000:3000"
+      - "${HOST_PORT:-3000}:3000"
     depends_on:
       - backend
     restart: unless-stopped
