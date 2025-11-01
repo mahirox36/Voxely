@@ -69,9 +69,6 @@ export default function Home() {
               started in minutes with our intuitive interface.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/signup" className="btn btn-primary">
-                Get Started
-              </Link>
               <Link href="/login" className="btn btn-secondary">
                 Login
               </Link>
@@ -207,7 +204,7 @@ export default function Home() {
             <h2 className="text-3xl font-bold text-white mb-8">
               Ready to Start?
             </h2>
-            <Link href="/signup" className="btn btn-primary">
+            <Link href="/login" className="btn btn-primary">
               Create Your Server Now
             </Link>
           </motion.div>

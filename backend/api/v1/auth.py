@@ -24,11 +24,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 ENV_FILE = ".env"
 
 # Initialize root password if not exists
-def initialize_root_password():
+def initialize_root_password(password: str):
     """Generate and save root password if it doesn't exist"""
     if not ROOT_PASSWORD:
         # Generate random password
-        new_password = secrets.token_urlsafe(16)
+        new_password = password # secrets.token_urlsafe(16)
         
         # Save to .env file
         if not os.path.exists(ENV_FILE):
@@ -48,7 +48,7 @@ def initialize_root_password():
     return ROOT_PASSWORD
 
 # Get or generate root password
-ROOT_PASSWORD = initialize_root_password()
+# ROOT_PASSWORD = initialize_root_password()
 
 # Models
 class Token(BaseModel):
@@ -57,6 +57,10 @@ class Token(BaseModel):
 
 class UserResponse(BaseModel):
     username: str = "root"
+
+class UserRequest(BaseModel):
+    username: str
+    password: str
 
 # JWT utilities
 def create_access_token() -> str:
@@ -117,8 +121,14 @@ async def get_current_user(request: Request) -> UserResponse:
     return UserResponse(username=username)
 
 # Routes
+@router.get("/first_time")
+async def first():
+    if not ROOT_PASSWORD:
+        return True
+    return False
+
 @router.post("/token", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: UserRequest):
     """Login as root user and get access token"""
     # Check credentials
     if form_data.username != "root":
@@ -127,6 +137,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Invalid username. Only 'root' user exists.",
             headers={"WWW-Authenticate": "Bearer"}
         )
+    global ROOT_PASSWORD
+    if not ROOT_PASSWORD:
+        ROOT_PASSWORD = initialize_root_password(form_data.password)
     
     if form_data.password != ROOT_PASSWORD:
         raise HTTPException(
@@ -158,12 +171,3 @@ async def logout(request: Request):
     """Logout endpoint"""
     current_user = await get_current_user(request)
     return {"message": "Successfully logged out"}
-
-@router.get("/password")
-async def get_password():
-    """Get the root password (only for local development!)"""
-    return {
-        "username": "root",
-        "password": ROOT_PASSWORD,
-        "warning": "This endpoint should be disabled in production!"
-    }

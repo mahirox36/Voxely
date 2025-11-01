@@ -1,56 +1,64 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import api from "@/utils/api";
 
 export default function Login() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const username = "root";
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [first, setFirst] = useState<boolean>(true);
   const router = useRouter();
 
   // Check for existing authentication on component mount
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (token) {
       setIsRedirecting(true);
       // Add a small delay to show the redirecting message
       const redirectTimer = setTimeout(() => {
-        router.push('/dashboard');
+        router.push("/dashboard");
       }, 1000);
-      
+
       return () => clearTimeout(redirectTimer);
     }
   }, [router]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res: boolean = await api.get("/auth/first_time");
+        setFirst(res)
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        setError(err.response?.data?.detail || "Login failed");
+        console.error(err);
+      }
+    })();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     try {
-      const res = await fetch('/api/v1/auth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`,
+      const data: {token_type: string, access_token:string} = await api.post("/auth/token", {
+        username: username,
+        password: password,
       });
 
-      const data = await res.json();
 
-      if (res.ok) {
-        // Store the complete token with type
-        localStorage.setItem('token', `${data.token_type} ${data.access_token}`);
-        setIsRedirecting(true);
-        router.push('/dashboard');
-      } else {
-        setError(data.detail || 'Login failed');
-      }
-    } catch (err) {
-      setError(`An error occurred. Please try again.`);
+      // Store the complete token with type
+      localStorage.setItem("token", `${data.token_type} ${data.access_token}`);
+      setIsRedirecting(true);
+      router.push("/dashboard");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Login failed");
       console.error(err);
     }
   };
@@ -87,7 +95,7 @@ export default function Login() {
             transition={{ delay: 0.2 }}
           >
             <h2 className="text-3xl font-bold text-center mb-8 text-white">
-              Welcome Back
+              {first ? "Create a password" : "Welcome Back"}
             </h2>
           </motion.div>
 
@@ -107,7 +115,10 @@ export default function Login() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              <label htmlFor="username" className="block text-sm font-medium text-white mb-1">
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium text-white mb-1"
+              >
                 Username
               </label>
               <input
@@ -118,7 +129,8 @@ export default function Login() {
                 className="w-full px-4 py-2 rounded-lg border border-white/30 bg-white/10 backdrop-blur-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
                 placeholder="Enter your username"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                disabled
+                // onChange={(e) => setUsername(e.target.value)}
               />
             </motion.div>
 
@@ -127,7 +139,10 @@ export default function Login() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
             >
-              <label htmlFor="password" className="block text-sm font-medium text-white mb-1">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-white mb-1"
+              >
                 Password
               </label>
               <input
@@ -147,10 +162,7 @@ export default function Login() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
             >
-              <button
-                type="submit"
-                className="btn btn-primary w-full"
-              >
+              <button type="submit" className="btn btn-primary w-full">
                 Sign in
               </button>
             </motion.div>
@@ -161,17 +173,7 @@ export default function Login() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6 }}
             className="text-center mt-6"
-          >
-            <p className="text-sm text-on-glass-muted">
-              Don&apos;t have an account?{' '}
-              <Link
-                href="/signup"
-                className="text-white hover:text-pink-200 transition-colors font-medium"
-              >
-                Sign up
-              </Link>
-            </p>
-          </motion.div>
+          ></motion.div>
         </div>
       </motion.div>
     </div>

@@ -4,6 +4,10 @@ services:
     container_name: voxely_backend
     expose:
       - "25401"
+    volumes:
+      - ./backend/servers:/app/servers
+      - ./backend/logs:/app/logs
+      - ./backend/.env:/app/.env
     restart: unless-stopped
   frontend:
     build: ./frontend
