@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 import logging
 import os
+from pathlib import Path
 import secrets
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -21,7 +22,7 @@ ROOT_PASSWORD = os.getenv("ROOT_PASSWORD")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
-ENV_FILE = ".env"
+ENV_FILE = Path(".env")
 
 # Initialize root password if not exists
 def initialize_root_password(password: str):
@@ -31,7 +32,9 @@ def initialize_root_password(password: str):
         new_password = password # secrets.token_urlsafe(16)
         
         # Save to .env file
-        if not os.path.exists(ENV_FILE):
+        if ENV_FILE.exists() and ENV_FILE.is_dir():
+            ENV_FILE.rmdir()
+        if not ENV_FILE.exists():
             with open(ENV_FILE, 'w') as f:
                 f.write(f'SECRET_KEY={SECRET_KEY}\n')
                 f.write(f'ROOT_PASSWORD={new_password}\n')
