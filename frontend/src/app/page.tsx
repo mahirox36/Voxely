@@ -1,215 +1,181 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import Link from "next/link";
-import Image from "next/image";
-import { Server, Rocket, Shield, Settings } from "lucide-react";
+import api from "@/utils/api";
 
-const features = [
-  {
-    icon: <Server className="text-4xl text-pink-500" />,
-    title: "Easy Server Creation",
-    description:
-      "Create Minecraft servers in just a few clicks. Support for Vanilla, Paper, Fabric, and more.",
-  },
-  {
-    icon: <Rocket className="text-4xl text-blue-500" />,
-    title: "Instant Deployment",
-    description:
-      "Your server will be up and running in seconds with optimized performance settings.",
-  },
-  {
-    icon: <Shield className="text-4xl text-purple-500" />,
-    title: "Secure Management",
-    description:
-      "Full control over your servers with secure authentication and user management.",
-  },
-  {
-    icon: <Settings className="text-4xl text-green-500" />,
-    title: "Advanced Controls",
-    description:
-      "Monitor performance, manage players, and control your server through an intuitive interface.",
-  },
-];
+export default function Login() {
+  const username = "root";
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [first, setFirst] = useState<boolean>(true);
+  const router = useRouter();
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.2,
-    },
-  },
-};
+  // Check for existing authentication on component mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsRedirecting(true);
+      // Add a small delay to show the redirecting message
+      const redirectTimer = setTimeout(() => {
+        router.push("/dashboard");
+      }, 1000);
 
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
+      return () => clearTimeout(redirectTimer);
+    }
+  }, [router]);
 
-export default function Home() {
+  useEffect(() => {
+    (async () => {
+      try {
+        const res: boolean = await api.get("/auth/first_time");
+        setFirst(res)
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        setError(err.response?.data?.detail || "Login failed");
+        console.error(err);
+      }
+    })();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      const data: {token_type: string, access_token:string} = await api.post("/auth/token", {
+        username: username,
+        password: password,
+      });
+
+
+      // Store the complete token with type
+      localStorage.setItem("token", `${data.token_type} ${data.access_token}`);
+      setIsRedirecting(true);
+      router.push("/dashboard");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Login failed");
+      console.error(err);
+    }
+  };
+
+  // If already authenticated and redirecting, show a message
+  if (isRedirecting) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-8 text-center"
+        >
+          <h2 className="text-xl text-white mb-4">Already logged in!</h2>
+          <p className="text-white/70 mb-4">Redirecting to dashboard...</p>
+          <div className="loader mx-auto"></div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen">
-      <section className="py-20 px-4">
-        <div className="container mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-              Minecraft Server Management
-              <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600">
-                Made Simple
-              </span>
-            </h1>
-            <p className="text-xl text-white/60 mb-12 max-w-2xl mx-auto">
-              Create, manage, and monitor your Minecraft servers with ease. Get
-              started in minutes with our intuitive interface.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/login" className="btn btn-secondary">
-                Login
-              </Link>
-            </div>
-          </motion.div>
-
-          <motion.div
-            variants={container}
-            initial="hidden"
-            animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mt-20"
-          >
-            {features.map((feature, index) => (
-              <motion.div
-                key={index}
-                variants={item}
-                className="glass-card hover:bg-white/20 transition-colors"
-              >
-                <div className="flex flex-col items-center">
-                  {feature.icon}
-                  <h3 className="text-xl font-semibold text-white mt-4 mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-white/60 text-center">
-                    {feature.description}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      <motion.section
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        className="py-20 px-4 relative overflow-hidden"
+    <div className="min-h-[80vh] flex items-center justify-center px-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="max-w-md w-full"
       >
-        <div className="container mx-auto">
-          <div className="glass-card relative z-10">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              <div>
-                <h2 className="text-3xl font-bold text-white mb-4">
-                  Why Choose Voxely?
-                </h2>
-                <ul className="space-y-4">
-                  <li className="flex items-start gap-3">
-                    <div className="rounded-full bg-green-500/20 p-1">
-                      <svg
-                        className="w-5 h-5 text-green-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-white/80">
-                      Easy to use interface with real-time monitoring
-                    </p>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <div className="rounded-full bg-green-500/20 p-1">
-                      <svg
-                        className="w-5 h-5 text-green-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-white/80">
-                      Support for multiple server types and versions
-                    </p>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <div className="rounded-full bg-green-500/20 p-1">
-                      <svg
-                        className="w-5 h-5 text-green-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-white/80">
-                      Advanced performance optimization
-                    </p>
-                  </li>
-                </ul>
-              </div>
-              <div className="relative">
-                <div className="aspect-video rounded-lg overflow-hidden">
-                  <Image
-                    src="https://images.unsplash.com/photo-1742599968125-a790a680a605?q=80&w=3464&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-                    alt="Dashboard Preview"
-                    className="w-full h-full object-cover opacity-80"
-                    width={1920}
-                    height={1080}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.section>
-
-      <section className="py-20 px-4">
-        <div className="container mx-auto text-center">
+        <div className="glass-card">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
           >
-            <h2 className="text-3xl font-bold text-white mb-8">
-              Ready to Start?
+            <h2 className="text-3xl font-bold text-center mb-8 text-white">
+              {first ? "Create a password" : "Welcome Back"}
             </h2>
-            <Link href="/login" className="btn btn-primary">
-              Create Your Server Now
-            </Link>
           </motion.div>
+
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-red-300 text-sm text-center bg-red-500/20 py-2 px-4 rounded-lg"
+              >
+                {error}
+              </motion.div>
+            )}
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium text-white mb-1"
+              >
+                Username
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                className="w-full px-4 py-2 rounded-lg border border-white/30 bg-white/10 backdrop-blur-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                placeholder="Enter your username"
+                value={username}
+                disabled
+                // onChange={(e) => setUsername(e.target.value)}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-white mb-1"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                className="w-full px-4 py-2 rounded-lg border border-white/30 bg-white/10 backdrop-blur-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+            >
+              <button type="submit" className="btn btn-primary w-full">
+                Sign in
+              </button>
+            </motion.div>
+          </form>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="text-center mt-6"
+          ></motion.div>
         </div>
-      </section>
+      </motion.div>
     </div>
   );
 }

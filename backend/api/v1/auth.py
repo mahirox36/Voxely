@@ -8,9 +8,10 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
+import psutil
 from pydantic import BaseModel
 
-DATA_FILE = Path("data.json")
+DATA_FILE = Path("servers/data.json")
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,8 @@ def initialize_root_password(password: str):
     if not ROOT_PASSWORD:
         # Generate random password
         new_password = password
-
+        if not DATA_FILE.parent.exists():
+            DATA_FILE.parent.mkdir(exist_ok=True)
         if DATA_FILE.exists():
             with open(DATA_FILE) as f:
                 data: Dict[str, Any] = loads(f.read())
@@ -130,6 +132,11 @@ async def first():
     if not ROOT_PASSWORD:
         return True
     return False
+
+@router.get("/system-info")
+def get_system_info():
+    total_ram = round(psutil.virtual_memory().total / (1024 ** 2))  # MB
+    return {"ram_mb": total_ram}
 
 
 @router.post("/token", response_model=Token)

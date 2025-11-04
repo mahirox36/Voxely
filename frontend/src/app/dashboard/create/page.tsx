@@ -124,7 +124,6 @@ export default function CreateServer() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [versions, setVersions] = useState<Record<string, string[]>>({});
-  const [systemRam, setSystemRam] = useState(16384);
   const [formData, setFormData] = useState({
     name: "",
     type: "paper",
@@ -145,23 +144,7 @@ export default function CreateServer() {
       }
     };
 
-    // Fetch system RAM information
-    const fetchSystemInfo = async () => {
-      try {
-        // This would ideally come from a backend endpoint
-        // For now we'll estimate based on navigator.deviceMemory if available
-        const memory = (navigator as Navigator & { deviceMemory?: number })
-          .deviceMemory;
-        if (memory) {
-          setSystemRam(memory * 1024); // Convert GB to MB
-        }
-      } catch (err) {
-        console.error("Failed to get system RAM:", err);
-      }
-    };
-
     fetchVersions();
-    fetchSystemInfo();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -321,8 +304,7 @@ export default function CreateServer() {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
-                      RAM (Min-Max) - Max Available:{" "}
-                      {Math.floor(systemRam / 1024)}GB
+                      RAM (Min-Max){" - be careful, don't put more than your system have"}  
                     </label>
                     <div className="flex items-center gap-2">
                       <MemoryStick className="text-purple-400" />
@@ -330,7 +312,7 @@ export default function CreateServer() {
                         type="number"
                         name="minRam"
                         min="512"
-                        max={systemRam}
+                        max={formData.maxRam}
                         step="512"
                         value={formData.minRam}
                         onChange={handleChange}
@@ -340,8 +322,7 @@ export default function CreateServer() {
                       <input
                         type="number"
                         name="maxRam"
-                        min="512"
-                        max={systemRam}
+                        min={formData.minRam}
                         step="512"
                         value={formData.maxRam}
                         onChange={handleChange}

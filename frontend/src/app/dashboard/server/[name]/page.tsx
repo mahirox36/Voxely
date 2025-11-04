@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthMiddleware from "@/components/AuthMiddleware";
-import { api } from "@/utils/api";
+import { api, isDev } from "@/utils/api";
 import ModalProvider, { useModal } from "@/components/ModalProvider";
 
 // Import components
@@ -73,7 +73,7 @@ function ServerDetailInner() {
     socketInitialized.current = true;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = "localhost:25401";
+    const host = `localhost:${isDev ? "25401" : ""}`;
     let token = localStorage.getItem("token");
     if (!token) token = "";
     const wsUrl = `${protocol}//${host}/api/v1/servers/ws/${serverName}?token=${encodeURIComponent(
