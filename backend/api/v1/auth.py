@@ -17,8 +17,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 # Security configuration
-SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
-ROOT_PASSWORD = os.getenv("ROOT_PASSWORD")
+if DATA_FILE.exists():
+    data: Dict[str, str] = loads(DATA_FILE.read_text(encoding="utf-8"))
+    SECRET_KEY = data.get("SECRET_KEY", secrets.token_urlsafe(32))
+    ROOT_PASSWORD = data.get("ROOT_PASSWORD")
+else:
+    SECRET_KEY = secrets.token_urlsafe(32)
+    ROOT_PASSWORD = None
+    
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
@@ -133,9 +139,10 @@ async def first():
         return True
     return False
 
+
 @router.get("/system-info")
 def get_system_info():
-    total_ram = round(psutil.virtual_memory().total / (1024 ** 2))  # MB
+    total_ram = round(psutil.virtual_memory().total / (1024**2))  # MB
     return {"ram_mb": total_ram}
 
 
