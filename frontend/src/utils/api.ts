@@ -1,7 +1,7 @@
 import axios from "axios";
 
 
-export const isDev = process.env.NODE_ENV === "development";
+const isDev = process.env.NODE_ENV === "development";
 
 export const api = axios.create({
   baseURL: isDev ? "http://localhost:25401/api/v1": "/api/v1", // all requests start here

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthMiddleware from "@/components/AuthMiddleware";
-import { api, isDev } from "@/utils/api";
+import { api } from "@/utils/api";
 import ModalProvider, { useModal } from "@/components/ModalProvider";
 
 // Import components
@@ -14,11 +14,7 @@ import { ServerStats } from "@/components/server/ServerStats";
 import { ConnectionInfo } from "@/components/server/ConnectionInfo";
 import { PlayerList } from "@/components/server/PlayerList";
 import { ConsoleOutput } from "@/components/server/ConsoleOutput";
-import {
-  BackupsTab,
-  LogsTab,
-  SettingsTab,
-} from "@/components/server/tabs";
+import { BackupsTab, LogsTab, SettingsTab } from "@/components/server/tabs";
 import {
   ConsoleMessage,
   ServerDetails,
@@ -73,7 +69,9 @@ function ServerDetailInner() {
     socketInitialized.current = true;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = `localhost:${isDev ? "25401" : ""}`;
+    const host = window.location.port
+      ? `${window.location.hostname}:${window.location.port}`
+      : window.location.hostname;
     let token = localStorage.getItem("token");
     if (!token) token = "";
     const wsUrl = `${protocol}//${host}/api/v1/servers/ws/${serverName}?token=${encodeURIComponent(
@@ -273,8 +271,10 @@ function ServerDetailInner() {
     return response.data;
   };
   const writeFile = async (path: string, content: string) => {
-    console.log(content)
-    await api.post(`/servers/${serverName}/files/write/${path}`, {data: content});
+    console.log(content);
+    await api.post(`/servers/${serverName}/files/write/${path}`, {
+      data: content,
+    });
   };
 
   //   uploadFile?: (targetPath: string, file: File) => Promise<void>;
