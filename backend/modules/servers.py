@@ -1214,9 +1214,7 @@ rcon.password={self.name}$213
         self.connections.append(connection)
 
     def remove_websocket(self, connection: ClientConnection):
-        self.websockets = [
-            c for c in self.websockets if c.id != connection.id
-        ]
+        self.connections.remove(connection)
 
     async def send_websocket(self, data: Any):
         self.logger.info(self.connections)
