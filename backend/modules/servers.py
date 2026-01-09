@@ -15,6 +15,7 @@ import shutil
 import json
 import subprocess
 import socket
+from packaging import version
 
 from modules.modrinth.project import Project
 from modules.modrinth.versions import Version
@@ -205,6 +206,7 @@ class Server:
         # Setup logger for this server instance
         self.logger = self._setup_logger()
         self.logger.info(f"Initializing server {name} (type={type}, version={version})")
+        self.java_bin = self.get_java_bin(self.version)
 
         # self.Properties = ServerProperties(self.path / "server.properties")
         self._rcon: Optional[MCRcon] = None
@@ -231,6 +233,37 @@ class Server:
         else:
             await self._load_existing_server()
         return self
+
+    def get_java_bin(self, mc_version: str) -> str:
+        server_version = version.parse(mc_version)
+
+        in_docker = False
+        if os.path.exists("/.dockerenv"):
+            in_docker = True
+        else:
+            try:
+                with open("/proc/1/cgroup", "rt") as f:
+                    in_docker = "docker" in f.read() or "kubepods" in f.read()
+            except Exception:
+                pass
+        self.logger.debug(f"Am I inside docker: {in_docker}, teehee~")
+
+        if in_docker:
+            if server_version < version.parse("1.17"):
+                return "/usr/lib/jvm/java-8-openjdk-amd64/bin/java"
+            elif server_version < version.parse("1.21"):
+                return "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
+            else:
+                return "/usr/lib/jvm/java-21-openjdk-amd64/bin/java"
+
+        java_path = shutil.which("java")
+        if java_path:
+            return java_path
+
+        raise RuntimeError(
+            "Java not found on host system! "
+            "Install Java 8, 17, or 21 depending on the server version."
+        )
 
     def _setup_logger(self) -> logging.Logger:
         logger = logging.getLogger(f"server.{self.name}")
@@ -1307,7 +1340,7 @@ rcon.password={self.name}$213
 
         try:
             self.process = await asyncio.create_subprocess_exec(
-                "java",
+                self.java_bin,
                 *java_opts,
                 "-jar",
                 str(self.jar_full_path),
