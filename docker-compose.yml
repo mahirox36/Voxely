@@ -24,7 +24,7 @@ services:
     ports:
       - "${HOST_PORT:-80}:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
     depends_on:
       - frontend
       - backend
