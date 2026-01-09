@@ -5,8 +5,8 @@ services:
     expose:
       - "25401"
     volumes:
-      - ./backend/servers:/app/servers
-      - ./backend/logs:/app/logs
+      - ./backend/servers:/app/servers:Z
+      - ./backend/logs:/app/logs:Z
     restart: unless-stopped
     networks:
       - app_network
