@@ -250,9 +250,9 @@ class Server:
 
         if in_docker:
             if server_version < version.parse("1.17"):
-                return "/usr/lib/jvm/java-8-openjdk-amd64/bin/java"
+                return "/opt/java8/bin/java"
             elif server_version < version.parse("1.21"):
-                return "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
+                return "/opt/java17/bin/java"
             else:
                 return "/opt/java21/bin/java"
 
