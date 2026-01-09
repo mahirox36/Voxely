@@ -254,7 +254,7 @@ class Server:
             elif server_version < version.parse("1.21"):
                 return "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
             else:
-                return "/usr/lib/jvm/java-21-openjdk-amd64/bin/java"
+                return "/opt/java21/bin/java"
 
         java_path = shutil.which("java")
         if java_path:

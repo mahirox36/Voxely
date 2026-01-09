@@ -1,20 +1,27 @@
-FROM ubuntu:23.10
+FROM python:3.14-slim
 
 # --------------------------
-# Install multiple Java versions and python
+# Install Java 8 and 17 + basic tools
 # --------------------------
 RUN apt-get update && apt-get install -y \
     openjdk-8-jdk-headless \
     openjdk-17-jdk-headless \
-    openjdk-21-jdk-headless \
-    python3 python3-pip \
     wget curl unzip git && \
     rm -rf /var/lib/apt/lists/*
 
-# Set JAVA_HOME defaults (optional, can be switched in Python)
+
+RUN mkdir -p /opt/java21
+# download directly from GitHub (replace URL with your tar.gz)
+RUN curl -L -o /tmp/OpenJDK21.tar.gz \
+    https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.9+10/OpenJDK21U-jdk_x64_linux_hotspot_21.0.9_10.tar.gz && \
+    tar -xzf /tmp/OpenJDK21.tar.gz -C /opt/java21 --strip-components=1 && \
+    rm /tmp/OpenJDK21.tar.gz
+
+
 ENV JAVA_8_HOME=/usr/lib/jvm/java-8-openjdk-amd64
 ENV JAVA_17_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-ENV JAVA_21_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV JAVA_21_HOME=/opt/java21
+
 ENV PATH="$JAVA_17_HOME/bin:$PATH"
 
 # --------------------------
