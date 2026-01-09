@@ -54,6 +54,7 @@ class ClientConnection:
     websocket: WebSocket
     id: str
 
+
 class ServerStatus(StrEnum):
     ONLINE = "online"
     OFFLINE = "offline"
@@ -178,18 +179,17 @@ class Addon:
     version: Version
     path: Path
 
+
 @dataclass
 class CachePlayer:
     uuid: str
     name: str
     expiresOn: str
 
+
 class Server:
     def __init__(
-        self,
-        name: str,
-        type: ServerType = ServerType.PAPER,
-        version: str = "1.21.1"
+        self, name: str, type: ServerType = ServerType.PAPER, version: str = "1.21.1"
     ):
         self.name = name
         self.path = Path("servers") / name
@@ -206,7 +206,7 @@ class Server:
         # Setup logger for this server instance
         self.logger = self._setup_logger()
         self.logger.info(f"Initializing server {name} (type={type}, version={version})")
-        self.java_bin = self.get_java_bin(self.version)
+        self.java_bin = self.get_java_bin(version)
 
         # self.Properties = ServerProperties(self.path / "server.properties")
         self._rcon: Optional[MCRcon] = None
@@ -235,38 +235,35 @@ class Server:
         return self
 
     def get_java_bin(self, mc_version: str) -> str:
-        try:
-            server_version = version.parse(mc_version)
+        server_version = version.parse(mc_version)
 
-            in_docker = False
-            if os.path.exists("/.dockerenv"):
-                in_docker = True
+        in_docker = False
+        if os.path.exists("/.dockerenv"):
+            in_docker = True
+        else:
+            try:
+                with open("/proc/1/cgroup", "rt") as f:
+                    in_docker = "docker" in f.read() or "kubepods" in f.read()
+            except Exception:
+                pass
+        logger.debug(f"Am I inside docker: {in_docker}, teehee~")
+
+        if in_docker:
+            if server_version < version.parse("1.17"):
+                return "/opt/java8/bin/java"
+            elif server_version < version.parse("1.21"):
+                return "/opt/java17/bin/java"
             else:
-                try:
-                    with open("/proc/1/cgroup", "rt") as f:
-                        in_docker = "docker" in f.read() or "kubepods" in f.read()
-                except Exception:
-                    pass
-            logger.debug(f"Am I inside docker: {in_docker}, teehee~")
+                return "/opt/java21/bin/java"
 
-            if in_docker:
-                if server_version < version.parse("1.17"):
-                    return "/opt/java8/bin/java"
-                elif server_version < version.parse("1.21"):
-                    return "/opt/java17/bin/java"
-                else:
-                    return "/opt/java21/bin/java"
+        java_path = shutil.which("java")
+        if java_path:
+            return java_path
 
-            java_path = shutil.which("java")
-            if java_path:
-                return java_path
-
-            raise RuntimeError(
-                "Java not found on host system! "
-                "Install Java 8, 17, or 21 depending on the server version."
-            )
-        except Exception as e:
-            logger.error(f"error: {e}")
+        raise RuntimeError(
+            "Java not found on host system! "
+            "Install Java 8, 17, or 21 depending on the server version."
+        )
 
     def _setup_logger(self) -> logging.Logger:
         logger = logging.getLogger(f"server.{self.name}")
@@ -318,7 +315,7 @@ class Server:
         else:
             self.logger.error("No Password found")
             raise
-        
+
         with self._rcon_lock:  # Use lock to prevent concurrent RCON operations
             try:
                 if self._rcon is None:
@@ -343,7 +340,7 @@ class Server:
                         )
                     self._rcon = None
                 raise
-    
+
     async def world_folder(self) -> Path:
         default = self.path / "world"
         properties = self.path / "server.properties"
@@ -367,6 +364,7 @@ class Server:
         for item in data:
             players[item.get("uuid", "")] = item.get("name", "")
         return players
+
     async def backup_server(self) -> Optional[str]:
         self.logger.info("Starting server backup")
         if self.status != ServerStatus.OFFLINE:
@@ -940,30 +938,35 @@ rcon.password={self.name}$213
     async def _run_installer(self):
         """Run a Forge/NeoForge installer asynchronously and set up the server."""
         # self.logger.info(f"Running installer: {installer_path} in directory: {install_dir}")
-        
+
         try:
-            
+
             process = await asyncio.create_subprocess_exec(
-                'java', '-jar', "server.jar", '--installServer',
+                "java",
+                "-jar",
+                "server.jar",
+                "--installServer",
                 cwd=self.path,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
-            
+
             # Wait for the process to complete and get output
             stdout, stderr = await process.communicate()
-            
+
             if process.returncode == 0:
                 self.logger.info("Installer completed successfully")
-                
+
                 # return glob.glob(str(self.path / "forge*.jar"))[0]
                 return True
             else:
-                self.logger.error(f"Installer failed with return code: {process.returncode}")
+                self.logger.error(
+                    f"Installer failed with return code: {process.returncode}"
+                )
                 self.logger.error(f"stdout: {stdout.decode()}")
                 self.logger.error(f"stderr: {stderr.decode()}")
                 return False
-                
+
         except FileNotFoundError:
             self.logger.error("Java not found. Make sure Java is installed and in PATH")
             return False
@@ -971,9 +974,7 @@ rcon.password={self.name}$213
             self.logger.error(f"Error running installer: {str(e)}")
             return False
 
-    async def _download_jar(
-        self, server_type: ServerType, version: str
-    ):
+    async def _download_jar(self, server_type: ServerType, version: str):
         """Download the server JAR file for the specified type and version."""
         self.logger.info(
             f"Downloading server JAR: type={server_type}, version={version}"
@@ -1059,7 +1060,10 @@ rcon.password={self.name}$213
                     self.logger.error(
                         f"Destination file {dest_path} does not exist after copy!"
                     )
-                if server_type == ServerType.FORGE or server_type == ServerType.NEOFORGE:
+                if (
+                    server_type == ServerType.FORGE
+                    or server_type == ServerType.NEOFORGE
+                ):
                     await self._run_installer()
                 return dest_path
             except Exception as e:
@@ -1143,13 +1147,13 @@ rcon.password={self.name}$213
     async def add_addon(self, addon: Addon):
         self.addons.append(addon)
         await self._save_state()
-    
+
     def get_addon(self, project_id: str) -> Optional[Addon]:
         for addon in self.addons:
             if addon.project.id == project_id:
                 return addon
         return None
-    
+
     def export_addons(self) -> List[Dict[str, Any]]:
         return [
             {
@@ -1173,7 +1177,7 @@ rcon.password={self.name}$213
             except Exception as e:
                 self.logger.error(f"Failed to delete addon file {addon.path}: {e}")
         await self._save_state()
-    
+
     @property
     def addon_path(self) -> Optional[Path]:
         if self.addon_type == "plugin":
@@ -1186,7 +1190,7 @@ rcon.password={self.name}$213
         #     elif (self.path / "plugins").exists():
         #         return self.path / "plugins"
         # return None
-        
+
     @property
     def addon_type(self) -> Optional[str]:
         if self.type == ServerType.PAPER or self.type == ServerType.PURPUR:
@@ -1324,9 +1328,16 @@ rcon.password={self.name}$213
         ]
 
         if self.type == ServerType.NEOFORGE or self.type == ServerType.FORGE:
-            
-            filename = "unix_args.txt" if platform.system() != "Windows" else "win_args.txt"
-            args_file = next((self.path / "libraries" / "net" / "minecraftforge" / "forge").rglob(filename), None)
+
+            filename = (
+                "unix_args.txt" if platform.system() != "Windows" else "win_args.txt"
+            )
+            args_file = next(
+                (self.path / "libraries" / "net" / "minecraftforge" / "forge").rglob(
+                    filename
+                ),
+                None,
+            )
 
             if args_file:
                 txt = args_file.read_text().replace("\n", "")
@@ -1334,7 +1345,9 @@ rcon.password={self.name}$213
             else:
                 start_command = None
         else:
-            start_command = f'java {" ".join(java_opts)} -jar "{self.jar_full_path}" nogui'
+            start_command = (
+                f'java {" ".join(java_opts)} -jar "{self.jar_full_path}" nogui'
+            )
         if not start_command:
             self.logger.error("start command didn't get")
             return False
@@ -1528,7 +1541,11 @@ rcon.password={self.name}$213
             self.logger.error(f"Failed to delete server directory: {e}")
 
     async def send_command(self, command: str):
-        if not self.process or self.process.returncode is not None or not self.process.stdin:
+        if (
+            not self.process
+            or self.process.returncode is not None
+            or not self.process.stdin
+        ):
             self.logger.warning("Cannot send command, process is not running")
             return
 
