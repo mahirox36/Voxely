@@ -235,35 +235,38 @@ class Server:
         return self
 
     def get_java_bin(self, mc_version: str) -> str:
-        server_version = version.parse(mc_version)
+        try:
+            server_version = version.parse(mc_version)
 
-        in_docker = False
-        if os.path.exists("/.dockerenv"):
-            in_docker = True
-        else:
-            try:
-                with open("/proc/1/cgroup", "rt") as f:
-                    in_docker = "docker" in f.read() or "kubepods" in f.read()
-            except Exception:
-                pass
-        self.logger.debug(f"Am I inside docker: {in_docker}, teehee~")
-
-        if in_docker:
-            if server_version < version.parse("1.17"):
-                return "/opt/java8/bin/java"
-            elif server_version < version.parse("1.21"):
-                return "/opt/java17/bin/java"
+            in_docker = False
+            if os.path.exists("/.dockerenv"):
+                in_docker = True
             else:
-                return "/opt/java21/bin/java"
+                try:
+                    with open("/proc/1/cgroup", "rt") as f:
+                        in_docker = "docker" in f.read() or "kubepods" in f.read()
+                except Exception:
+                    pass
+            logger.debug(f"Am I inside docker: {in_docker}, teehee~")
 
-        java_path = shutil.which("java")
-        if java_path:
-            return java_path
+            if in_docker:
+                if server_version < version.parse("1.17"):
+                    return "/opt/java8/bin/java"
+                elif server_version < version.parse("1.21"):
+                    return "/opt/java17/bin/java"
+                else:
+                    return "/opt/java21/bin/java"
 
-        raise RuntimeError(
-            "Java not found on host system! "
-            "Install Java 8, 17, or 21 depending on the server version."
-        )
+            java_path = shutil.which("java")
+            if java_path:
+                return java_path
+
+            raise RuntimeError(
+                "Java not found on host system! "
+                "Install Java 8, 17, or 21 depending on the server version."
+            )
+        except Exception as e:
+            logger.error(f"error: {e}")
 
     def _setup_logger(self) -> logging.Logger:
         logger = logging.getLogger(f"server.{self.name}")
