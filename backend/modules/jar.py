@@ -1,533 +1,525 @@
 from enum import StrEnum
 import os
 from typing import Optional
-import requests
 import json
 import time
+import asyncio
+import zipfile
+from pathlib import Path
+from modules.models import ServerType
+import aiohttp
+import aiofiles
 from rich import print
 from rich.progress import Progress, DownloadColumn, TransferSpeedColumn
 import logging
-import shutil
-import asyncio
-from pathlib import Path
 
-# Set up a dedicated logger for the JAR module
+# ---------------------------------------------------------------------------
+# Logger setup
+# ---------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 jar_logger = logging.getLogger("jar_downloader")
 
-# Create a file handler for the jar downloader
 os.makedirs("logs", exist_ok=True)
 file_handler = logging.FileHandler("logs/jar_downloader.log")
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
 jar_logger.addHandler(file_handler)
 
-class ServerType(StrEnum):
-    VANILLA = "vanilla"
-    FABRIC = "fabric"
-    PAPER = "paper"
-    PURPUR = "purpur"
-    FORGE = "forge"
-    NEOFORGE = "neoforge"
 
-class MinecraftServerDownloader:
-    def __init__(self):
-        self.version_manifest_url = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
-        self.paper_api_url = "https://api.papermc.io/v2/projects/paper"
-        self.fabric_meta_url = "https://meta.fabricmc.net/v2/versions"
-        self.forge_promotions_url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
-        self.forge_maven_url = "https://maven.minecraftforge.net/net/minecraftforge/forge"
-        self.neoforge_maven_url = "https://maven.neoforged.net/releases/net/neoforged/neoforge"
-        self.purpur_api_url = "https://api.purpurmc.org/v2/purpur"
-        
+class JarDownloader:
+    # Class-level constants (Static URLs)
+    version_manifest_url = (
+        "https://launchermeta.mojang.com/mc/game/version_manifest.json"
+    )
+    paper_api_url = "https://api.papermc.io/v2/projects/paper"
+    fabric_meta_url = "https://meta.fabricmc.net/v2/versions"
+    forge_promotions_url = (
+        "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+    )
+    forge_maven_url = "https://maven.minecraftforge.net/net/minecraftforge/forge"
+    neoforge_maven_url = "https://maven.neoforged.net/releases/net/neoforged/neoforge"
+    purpur_api_url = "https://api.purpurmc.org/v2/purpur"
+
+    _init_done = False
+
+    def __init__(self) -> None:
+        # Configuration
         self.cache_dir = "cache"
         self.versions_dir = "versions"
+        self._cache_duration = 3600  # seconds
+
+        # Ensure directories exist for every instance
         os.makedirs(self.cache_dir, exist_ok=True)
         os.makedirs(self.versions_dir, exist_ok=True)
-        
-        self._cache = {}
-        self._cache_duration = 3600  # 1 hour cache
-        jar_logger.info(f"MinecraftServerDownloader initialized with versions directory: {self.versions_dir}")
 
-    def _get_cached_data(self, cache_key):
+        # Global initialization log (runs only once)
+        if not JarDownloader._init_done:
+            jar_logger.info(
+                "JarDownloader initialised | versions_dir=%s cache_dir=%s",
+                self.versions_dir,
+                self.cache_dir,
+            )
+            JarDownloader._init_done = True
+
+    # ------------------------------------------------------------------
+    # Cache helpers (I/O kept async)
+    # ------------------------------------------------------------------
+
+    async def _get_cached_data(self, cache_key: str):
         cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
-        jar_logger.debug(f"Checking for cached data: {cache_key}")
-        if os.path.exists(cache_file):
-            jar_logger.debug(f"Cache file exists: {cache_file}")
-            try:
-                with open(cache_file, 'r') as f:
-                    data = json.load(f)
-                    if time.time() - data['timestamp'] < self._cache_duration:
-                        jar_logger.debug(f"Using cached data for {cache_key}")
-                        return data['content']
-                    jar_logger.debug(f"Cache expired for {cache_key}")
-            except Exception as e:
-                jar_logger.error(f"Error reading cache file {cache_file}: {str(e)}")
-        else:
-            jar_logger.debug(f"No cache file found for {cache_key}")
+        if not os.path.exists(cache_file):
+            return None
+        try:
+            async with aiofiles.open(cache_file, "r") as f:
+                data = json.loads(await f.read())
+            if time.time() - data["timestamp"] < self._cache_duration:
+                jar_logger.debug("Cache hit: %s", cache_key)
+                return data["content"]
+            jar_logger.debug("Cache expired: %s", cache_key)
+        except Exception as e:
+            jar_logger.error("Error reading cache %s: %s", cache_file, e)
         return None
 
-    def _save_cache(self, cache_key, content):
+    async def _save_cache(self, cache_key: str, content) -> None:
         cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
-        jar_logger.debug(f"Saving cache for {cache_key}")
         try:
-            with open(cache_file, 'w') as f:
-                json.dump({
-                    'timestamp': time.time(),
-                    'content': content
-                }, f)
-            jar_logger.debug(f"Cache saved successfully to {cache_file}")
+            async with aiofiles.open(cache_file, "w") as f:
+                await f.write(
+                    json.dumps({"timestamp": time.time(), "content": content})
+                )
+            jar_logger.debug("Cache saved: %s", cache_key)
         except Exception as e:
-            jar_logger.error(f"Error saving cache to {cache_file}: {str(e)}")
+            jar_logger.error("Error saving cache %s: %s", cache_file, e)
 
-    def _download_with_progress(self, url, filename):
-        jar_logger.info(f"Starting download from {url} to {filename}")
-        try:
-            with Progress(
-                *Progress.get_default_columns(),
-                DownloadColumn(),
-                TransferSpeedColumn(),
-            ) as progress:
-                response = requests.get(url, stream=True)
-                if response.status_code != 200:
-                    jar_logger.error(f"Download failed with status code: {response.status_code}")
-                    return False
-                
-                total_size = int(response.headers.get('content-length', 0))
-                jar_logger.info(f"Download size: {total_size} bytes")
-                task = progress.add_task("[cyan]Downloading...", total=total_size)
-                
-                with open(filename, 'wb') as f:
-                    bytes_downloaded = 0
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            bytes_downloaded += len(chunk)
-                            progress.update(task, advance=len(chunk))
-                    
-                    jar_logger.info(f"Downloaded {bytes_downloaded} of {total_size} bytes to {filename}")
-                
-                # Verify the file was downloaded correctly
-                if os.path.exists(filename):
-                    file_size = os.path.getsize(filename)
-                    jar_logger.info(f"Verifying download: file size is {file_size} bytes")
-                    if total_size > 0 and file_size != total_size:
-                        jar_logger.warning(f"Download size mismatch! Expected {total_size}, got {file_size}")
-                else:
-                    jar_logger.error(f"Downloaded file {filename} does not exist!")
-                    return False
-                
-                return filename
-        except Exception as e:
-            jar_logger.error(f"Error downloading file: {str(e)}")
-            return False
+    # ------------------------------------------------------------------
+    # Core download helper (non-blocking)
+    # ------------------------------------------------------------------
 
-    def get_vanilla_versions(self, include_snapshots=False):
-        """Get all available Vanilla Minecraft versions. Optionally include snapshots."""
-        jar_logger.info(f"Getting vanilla versions (include_snapshots={include_snapshots})")
-        cache_data = self._get_cached_data('vanilla_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached vanilla versions")
-            return cache_data
-        
+    async def _download_with_progress(
+        self, url: str, filename: str, session: aiohttp.ClientSession
+    ) -> Optional[str]:
+        jar_logger.info("Downloading %s → %s", url, filename)
         try:
-            response = requests.get(self.version_manifest_url)
-            if response.status_code == 200:
-                version_data = response.json()
-                if include_snapshots:
-                    versions = [v['id'] for v in version_data['versions']]
-                else:
-                    versions = [v['id'] for v in version_data['versions'] if v['type'] == 'release']
-                jar_logger.info(f"Retrieved {len(versions)} vanilla versions")
-                self._save_cache('vanilla_versions', versions)
-                return versions
+            async with session.get(url) as response:
+                if response.status != 200:
+                    jar_logger.error("HTTP %d for %s", response.status, url)
+                    return None
+
+                total_size = int(response.headers.get("content-length", 0))
+
+                with Progress(
+                    *Progress.get_default_columns(),
+                    DownloadColumn(),
+                    TransferSpeedColumn(),
+                ) as progress:
+                    task = progress.add_task(
+                        "[cyan]Downloading…", total=total_size or None
+                    )
+
+                    async with aiofiles.open(filename, "wb") as f:
+                        bytes_downloaded = 0
+                        async for chunk in response.content.iter_chunked(65_536):
+                            if chunk:
+                                await f.write(chunk)
+                                bytes_downloaded += len(chunk)
+                                progress.update(task, advance=len(chunk))
+
+                    jar_logger.info(
+                        "Downloaded %d / %d bytes → %s",
+                        bytes_downloaded,
+                        total_size,
+                        filename,
+                    )
+
+            # Integrity check
+            if os.path.exists(filename):
+                file_size = os.path.getsize(filename)
+                if total_size and file_size != total_size:
+                    jar_logger.warning(
+                        "Size mismatch! expected=%d got=%d", total_size, file_size
+                    )
             else:
-                jar_logger.error(f"Failed to fetch Vanilla versions. Status code: {response.status_code}")
-                return []
+                jar_logger.error("File missing after download: %s", filename)
+                return None
+
+            return filename
+
         except Exception as e:
-            jar_logger.error(f"Error fetching vanilla versions: {str(e)}")
+            jar_logger.error("Error downloading %s: %s", url, e)
+            return None
+
+    # ------------------------------------------------------------------
+    # Public: unified entry point
+    # ------------------------------------------------------------------
+
+    async def download_jar(
+        self,
+        version: str,
+        type: ServerType,
+        destination: Path,
+    ) -> Optional[Path]:
+        """Download the appropriate server JAR without blocking the event loop."""
+        jar_logger.info("download_jar | version=%s type=%s", version, type)
+        async with aiohttp.ClientSession() as session:
+            try:
+                if type == ServerType.VANILLA:
+                    result = await self.download_vanilla(version, session)
+                elif type == ServerType.PAPER:
+                    result = await self.download_paper(version, session)
+                elif type == ServerType.FABRIC:
+                    result = await self.download_fabric(version, session)
+                elif type == ServerType.PURPUR:
+                    result = await self.download_purpur(version, session)
+                elif type == ServerType.FORGE:
+                    result = await self.download_forge(version, session)
+                elif type == ServerType.NEOFORGE:
+                    result = await self.download_neoforge(version, session)
+                else:
+                    jar_logger.error("Unsupported server type: %s", type)
+                    return None
+
+                if result:
+                    dest_path = destination / os.path.basename(result)
+                    os.makedirs(destination, exist_ok=True)
+                    os.replace(result, dest_path)
+                    jar_logger.info("JAR ready at %s", dest_path)
+                    return dest_path
+                else:
+                    jar_logger.error("Failed to download JAR for version %s", version)
+                    return None
+
+            except Exception as e:
+                jar_logger.error("Error in download_jar: %s", e)
+                return None
+
+    # ------------------------------------------------------------------
+    # Vanilla
+    # ------------------------------------------------------------------
+
+    async def get_vanilla_versions(
+        self,
+        session: aiohttp.ClientSession,
+        include_snapshots: bool = False,
+    ):
+        cached = await self._get_cached_data("vanilla_versions")
+        if cached:
+            return cached
+        try:
+            async with session.get(self.version_manifest_url) as resp:
+                if resp.status != 200:
+                    jar_logger.error("Vanilla manifest HTTP %d", resp.status)
+                    return []
+                data = await resp.json(content_type=None)
+            if include_snapshots:
+                versions = [v["id"] for v in data["versions"]]
+            else:
+                versions = [v["id"] for v in data["versions"] if v["type"] == "release"]
+            await self._save_cache("vanilla_versions", versions)
+            return versions
+        except Exception as e:
+            jar_logger.error("get_vanilla_versions: %s", e)
             return []
 
-    def downloadVanilla(self, version: str):
-        """Download Vanilla server JAR (ready to use)."""
-        jar_logger.info(f"Downloading vanilla version {version}")
-        versions = self.get_vanilla_versions(True)
-        version = str(version)
-        if version not in versions:
-            jar_logger.error(f"Version {version} not found in available versions")
-            return False
-        
+    async def download_vanilla(
+        self, version: str, session: aiohttp.ClientSession
+    ) -> Optional[str]:
+        versions = await self.get_vanilla_versions(session, include_snapshots=True)
+        if str(version) not in versions:
+            jar_logger.error("Vanilla version %s not found", version)
+            return None
         try:
-            response = requests.get(self.version_manifest_url)
-            if response.status_code == 200:
-                version_data = next((v for v in response.json()['versions'] if v['id'] == version), None)
-                if not version_data:
-                    jar_logger.error(f"Version {version} not found in manifest")
-                    return False
-                version_url = version_data['url']
-                jar_logger.debug(f"Found version URL: {version_url}")
-            else:
-                jar_logger.error(f"Failed to fetch version manifest. Status code: {response.status_code}")
-                return False
-            
-            response = requests.get(version_url)
-            if response.status_code == 200:
-                server_url = response.json()["downloads"]["server"]["url"]
-                jar_logger.debug(f"Found server download URL: {server_url}")
-            else:
-                jar_logger.error(f"Failed to fetch version data. Status code: {response.status_code}")
-                return False
-            
+            async with session.get(self.version_manifest_url) as resp:
+                manifest = await resp.json(content_type=None)
+
+            version_meta = next(
+                (v for v in manifest["versions"] if v["id"] == version), None
+            )
+            if not version_meta:
+                return None
+
+            async with session.get(version_meta["url"]) as resp:
+                version_data = await resp.json(content_type=None)
+
+            server_url = version_data["downloads"]["server"]["url"]
             jar_file = f"versions/vanilla-{version}.jar"
-            result = self._download_with_progress(server_url, jar_file)
-            jar_logger.info(f"Download result: {result}")
-            return result
+            return await self._download_with_progress(server_url, jar_file, session)
         except Exception as e:
-            jar_logger.error(f"Error in downloadVanilla: {str(e)}")
-            return False
+            jar_logger.error("download_vanilla: %s", e)
+            return None
 
-    def get_paper_versions(self):
-        """Get all available Paper versions."""
-        jar_logger.info("Getting Paper versions")
-        cache_data = self._get_cached_data('paper_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached Paper versions")
-            return cache_data
+    # ------------------------------------------------------------------
+    # Paper
+    # ------------------------------------------------------------------
 
+    async def get_paper_versions(self, session: aiohttp.ClientSession):
+        cached = await self._get_cached_data("paper_versions")
+        if cached:
+            return cached
         try:
-            response = requests.get(f"{self.paper_api_url}/")
-            if response.status_code == 200:
-                version_data = response.json()
-                versions = version_data['versions']
-                versions.reverse()
-                jar_logger.info(f"Retrieved {len(versions)} Paper versions")
-                self._save_cache('paper_versions', versions)
-                return versions
-            else:
-                jar_logger.error(f"Failed to fetch Paper versions. Status code: {response.status_code}")
-                return []
+            async with session.get(f"{self.paper_api_url}/") as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json(content_type=None)
+            versions = list(reversed(data["versions"]))
+            await self._save_cache("paper_versions", versions)
+            return versions
         except Exception as e:
-            jar_logger.error(f"Error fetching Paper versions: {str(e)}")
-            return []
-    
-    def downloadPaper(self, version: str, build='latest'):
-        """Download Paper server JAR (ready to use)."""
-        jar_logger.info(f"Downloading Paper version {version} (build={build})")
-        versions = self.get_paper_versions()
-        version = str(version)
-        if version not in versions:
-            jar_logger.error(f"Version {version} not found in available Paper versions")
-            return False
-        
-        try:
-            api_url = f"https://api.papermc.io/v2/projects/paper/versions/{version}/builds"
-            jar_logger.debug(f"Fetching builds from: {api_url}")
-            response = requests.get(api_url)
-        
-            if response.status_code == 200:
-                builds = response.json()["builds"]
-                if not builds:
-                    jar_logger.error(f"No builds found for Paper version {version}")
-                    return False
-                
-                latest_build = builds[-1]
-                build_number = latest_build['build']
-                jar_logger.info(f"Using build {build_number} for Paper version {version}")
-                
-                download_url = f"https://api.papermc.io/v2/projects/paper/versions/{version}/builds/{build_number}/downloads/paper-{version}-{build_number}.jar"
-                jar_file = f"versions/paper-{version}-{build_number}.jar"
-                
-                jar_logger.debug(f"Downloading from: {download_url}")
-                result = self._download_with_progress(download_url, jar_file)
-                jar_logger.info(f"Download result: {result}")
-                return result
-            else:
-                jar_logger.error(f"Failed to fetch Paper builds. Status code: {response.status_code}")
-                return False
-        except Exception as e:
-            jar_logger.error(f"Error in downloadPaper: {str(e)}")
-            return False
-
-    def get_fabric_versions(self, include_snapshots=False):
-        """Get all available Minecraft versions supported by Fabric. Optionally include snapshots."""
-        jar_logger.info(f"Getting Fabric versions (include_snapshots={include_snapshots})")
-        cache_data = self._get_cached_data('fabric_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached Fabric versions")
-            return cache_data
-        
-        try:
-            response = requests.get(f"{self.fabric_meta_url}/game")
-            if response.status_code == 200:
-                version_data = response.json()
-                if include_snapshots:
-                    versions = version_data
-                else:
-                    versions = [v for v in version_data if v.get('stable', False)]
-                versions = [v['version'] for v in versions]
-                jar_logger.info(f"Retrieved {len(versions)} Fabric versions")
-                self._save_cache('fabric_versions', versions)
-                return versions
-            else:
-                jar_logger.error(f"Failed to fetch Fabric supported versions. Status code: {response.status_code}")
-                return []
-        except Exception as e:
-            jar_logger.error(f"Error fetching Fabric versions: {str(e)}")
+            jar_logger.error("get_paper_versions: %s", e)
             return []
 
-    def downloadFabric(self, version: str):
-        """Download Fabric server JAR (ready to use, no installer needed)."""
-        jar_logger.info(f"Downloading Fabric version {version}")
-        versions = self.get_fabric_versions(True)
-        version = str(version)
-        if version not in versions:
-            jar_logger.error(f"Version {version} not found in available Fabric versions")
-            return False
-
+    async def download_paper(
+        self, version: str, session: aiohttp.ClientSession, build: str = "latest"
+    ) -> Optional[str]:
+        versions = await self.get_paper_versions(session)
+        if str(version) not in versions:
+            jar_logger.error("Paper version %s not found", version)
+            return None
         try:
-            # Get the latest loader version
-            loader_url = f"{self.fabric_meta_url}/loader/{version}"
-            jar_logger.debug(f"Fetching loader version from: {loader_url}")
-            loader_response = requests.get(loader_url)
-            if loader_response.status_code != 200:
-                jar_logger.error(f"Failed to fetch Fabric loader versions. Status code: {loader_response.status_code}")
-                return False
+            async with session.get(
+                f"https://api.papermc.io/v2/projects/paper/versions/{version}/builds"
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                builds = (await resp.json(content_type=None))["builds"]
 
-            loader_data = loader_response.json()
+            if not builds:
+                return None
+            build_number = builds[-1]["build"]
+            download_url = (
+                f"https://api.papermc.io/v2/projects/paper/versions/{version}"
+                f"/builds/{build_number}/downloads/paper-{version}-{build_number}.jar"
+            )
+            jar_file = f"versions/paper-{version}-{build_number}.jar"
+            return await self._download_with_progress(download_url, jar_file, session)
+        except Exception as e:
+            jar_logger.error("download_paper: %s", e)
+            return None
+
+    # ------------------------------------------------------------------
+    # Fabric
+    # ------------------------------------------------------------------
+
+    async def get_fabric_versions(
+        self,
+        session: aiohttp.ClientSession,
+        include_snapshots: bool = False,
+    ):
+        cached = await self._get_cached_data("fabric_versions")
+        if cached:
+            return cached
+        try:
+            async with session.get(f"{self.fabric_meta_url}/game") as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json(content_type=None)
+            versions = (
+                data if include_snapshots else [v for v in data if v.get("stable")]
+            )
+            versions = [v["version"] for v in versions]
+            await self._save_cache("fabric_versions", versions)
+            return versions
+        except Exception as e:
+            jar_logger.error("get_fabric_versions: %s", e)
+            return []
+
+    async def download_fabric(
+        self, version: str, session: aiohttp.ClientSession
+    ) -> Optional[str]:
+        versions = await self.get_fabric_versions(session, include_snapshots=True)
+        if str(version) not in versions:
+            jar_logger.error("Fabric version %s not found", version)
+            return None
+        try:
+            async with session.get(f"{self.fabric_meta_url}/loader/{version}") as resp:
+                if resp.status != 200:
+                    return None
+                loader_data = await resp.json(content_type=None)
             if not loader_data:
-                jar_logger.error(f"No Fabric loader found for version {version}")
-                return False
+                return None
+            loader_version = loader_data[0]["loader"]["version"]
 
-            loader_version = loader_data[0]['loader']['version']
-            jar_logger.info(f"Using Fabric loader version: {loader_version}")
-
-            # Get the latest installer version
-            installer_url = f"{self.fabric_meta_url}/installer"
-            jar_logger.debug(f"Fetching installer version from: {installer_url}")
-            installer_response = requests.get(installer_url)
-            if installer_response.status_code != 200:
-                jar_logger.error(f"Failed to fetch Fabric installer versions. Status code: {installer_response.status_code}")
-                return False
-
-            installer_data = installer_response.json()
+            async with session.get(f"{self.fabric_meta_url}/installer") as resp:
+                if resp.status != 200:
+                    return None
+                installer_data = await resp.json(content_type=None)
             if not installer_data:
-                jar_logger.error("No Fabric installer versions found")
-                return False
+                return None
+            installer_version = installer_data[0]["version"]
 
-            installer_version = installer_data[0]['version']
-            jar_logger.info(f"Using Fabric installer version: {installer_version}")
-
-            # Construct the download URL for the Fabric server launcher (ready to use JAR)
-            download_url = f"https://meta.fabricmc.net/v2/versions/loader/{version}/{loader_version}/{installer_version}/server/jar"
-            jar_logger.debug(f"Downloading from: {download_url}")
-            
-            filename = f"versions/fabric-server-mc{version}-loader{loader_version}-launcher{installer_version}.jar"
-            result = self._download_with_progress(download_url, filename)
-            jar_logger.info(f"Download result: {result}")
-            return result
+            download_url = (
+                f"https://meta.fabricmc.net/v2/versions/loader"
+                f"/{version}/{loader_version}/{installer_version}/server/jar"
+            )
+            filename = (
+                f"versions/fabric-server-mc{version}"
+                f"-loader{loader_version}-launcher{installer_version}.jar"
+            )
+            return await self._download_with_progress(download_url, filename, session)
         except Exception as e:
-            jar_logger.error(f"Error in downloadFabric: {str(e)}")
-            return False
+            jar_logger.error("download_fabric: %s", e)
+            return None
 
-    def get_purpur_versions(self):
-        """Get all available Purpur versions."""
-        jar_logger.info("Getting Purpur versions")
-        cache_data = self._get_cached_data('purpur_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached Purpur versions")
-            return cache_data
+    # ------------------------------------------------------------------
+    # Purpur
+    # ------------------------------------------------------------------
 
+    async def get_purpur_versions(self, session: aiohttp.ClientSession):
+        cached = await self._get_cached_data("purpur_versions")
+        if cached:
+            return cached
         try:
-            response = requests.get(self.purpur_api_url)
-            if response.status_code == 200:
-                versions = response.json()['versions']
-                jar_logger.info(f"Retrieved {len(versions)} Purpur versions")
-                self._save_cache('purpur_versions', versions)
-                return versions
-            else:
-                jar_logger.error(f"Failed to fetch Purpur versions. Status code: {response.status_code}")
-                return []
+            async with session.get(self.purpur_api_url) as resp:
+                if resp.status != 200:
+                    return []
+                versions = (await resp.json(content_type=None))["versions"]
+            await self._save_cache("purpur_versions", versions)
+            return versions
         except Exception as e:
-            jar_logger.error(f"Error fetching Purpur versions: {str(e)}")
+            jar_logger.error("get_purpur_versions: %s", e)
             return []
 
-    def downloadPurpur(self, version: str, build='latest'):
-        """Download Purpur server JAR (ready to use)."""
-        jar_logger.info(f"Downloading Purpur version {version} (build={build})")
-        versions = self.get_purpur_versions()
+    async def download_purpur(
+        self, version: str, session: aiohttp.ClientSession, build: str = "latest"
+    ) -> Optional[str]:
+        versions = await self.get_purpur_versions(session)
         if version not in versions:
-            jar_logger.error(f"Version {version} not found in available Purpur versions")
-            return False
-
+            jar_logger.error("Purpur version %s not found", version)
+            return None
         try:
-            if build == 'latest':
-                response = requests.get(f"{self.purpur_api_url}/{version}/latest")
-                if response.status_code != 200:
-                    jar_logger.error("Failed to fetch latest build")
-                    return False
-                build = response.json()['build']
-                jar_logger.info(f"Using latest build: {build}")
+            if build == "latest":
+                async with session.get(
+                    f"{self.purpur_api_url}/{version}/latest"
+                ) as resp:
+                    if resp.status != 200:
+                        return None
+                    build = (await resp.json(content_type=None))["build"]
 
             download_url = f"{self.purpur_api_url}/{version}/{build}/download"
             filename = f"versions/purpur-{version}-{build}.jar"
-            jar_logger.debug(f"Downloading from: {download_url}")
-            result = self._download_with_progress(download_url, filename)
-            jar_logger.info(f"Download result: {result}")
-            return result
+            return await self._download_with_progress(download_url, filename, session)
         except Exception as e:
-            jar_logger.error(f"Error in downloadPurpur: {str(e)}")
-            return False
+            jar_logger.error("download_purpur: %s", e)
+            return None
 
-    def get_forge_versions(self):
-        """Get all available Forge versions from the promotions file."""
-        jar_logger.info("Getting Forge versions")
-        cache_data = self._get_cached_data('forge_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached Forge versions")
-            return cache_data
+    # ------------------------------------------------------------------
+    # Forge
+    # ------------------------------------------------------------------
 
+    async def get_forge_versions(self, session: aiohttp.ClientSession):
+        cached = await self._get_cached_data("forge_versions")
+        if cached:
+            return cached
         try:
-            response = requests.get(self.forge_promotions_url)
-            if response.status_code == 200:
-                promotions = response.json()
-                # Extract unique minecraft versions from the promotions
-                versions = {}
-                for key in promotions['promos']:
-                    if '-' in key:
-                        mc_version = key.split('-')[0]
-                        forge_version = promotions['promos'][key]
-                        versions[mc_version] = forge_version
-                
-                jar_logger.info(f"Retrieved {len(versions)} Forge versions")
-                self._save_cache('forge_versions', versions)
-                return versions
-            else:
-                jar_logger.error(f"Failed to fetch Forge versions. Status code: {response.status_code}")
-                return {}
+            async with session.get(self.forge_promotions_url) as resp:
+                if resp.status != 200:
+                    return {}
+                promotions = await resp.json(content_type=None)
+            versions: dict[str, str] = {}
+            for key, forge_ver in promotions["promos"].items():
+                if "-" in key:
+                    mc_ver = key.split("-")[0]
+                    versions[mc_ver] = forge_ver
+            await self._save_cache("forge_versions", versions)
+            return versions
         except Exception as e:
-            jar_logger.error(f"Error fetching Forge versions: {str(e)}")
+            jar_logger.error("get_forge_versions: %s", e)
             return {}
 
-    async def downloadForge(self, mc_version: str, forge_version: Optional[str] = None):
-        """Download Forge installer and optionally install the server (requires installer to be run)."""
-        jar_logger.info(f"Downloading Forge for Minecraft {mc_version}, forge_version={forge_version}")
-        
+    async def download_forge(
+        self,
+        mc_version: str,
+        session: aiohttp.ClientSession,
+        forge_version: Optional[str] = None,
+    ) -> Optional[str]:
         try:
-            # If no forge version specified, get the recommended one
             if not forge_version:
-                versions = self.get_forge_versions()
+                versions = await self.get_forge_versions(session)
                 if mc_version not in versions:
-                    jar_logger.error(f"No Forge version found for Minecraft {mc_version}")
-                    return False
+                    jar_logger.error("No Forge version for MC %s", mc_version)
+                    return None
                 forge_version = versions[mc_version]
-                jar_logger.info(f"Using recommended Forge version: {forge_version}")
-            
-            # Construct the full version string
+
             full_version = f"{mc_version}-{forge_version}"
-            
-            # Download URL
-            download_url = f"{self.forge_maven_url}/{full_version}/forge-{full_version}-installer.jar"
+            download_url = (
+                f"{self.forge_maven_url}/{full_version}"
+                f"/forge-{full_version}-installer.jar"
+            )
             installer_path = f"versions/forge-{full_version}-installer.jar"
-            
-            jar_logger.debug(f"Downloading from: {download_url}")
-            result = self._download_with_progress(download_url, installer_path)
-            
-            if not result:
-                jar_logger.error("Failed to download Forge installer")
-                return False
-            
-            
-            return installer_path
-            
+            return await self._download_with_progress(
+                download_url, installer_path, session
+            )
         except Exception as e:
-            jar_logger.error(f"Error in downloadForge: {str(e)}")
-            return False
+            jar_logger.error("download_forge: %s", e)
+            return None
 
-    def get_neoforge_versions(self):
-        """Get available NeoForge versions by scraping the Maven repository."""
-        jar_logger.info("Getting NeoForge versions")
-        cache_data = self._get_cached_data('neoforge_versions')
-        if cache_data:
-            jar_logger.info(f"Found {len(cache_data)} cached NeoForge versions")
-            return cache_data
+    # ------------------------------------------------------------------
+    # NeoForge
+    # ------------------------------------------------------------------
 
+    async def get_neoforge_versions(self, session: aiohttp.ClientSession):
+        cached = await self._get_cached_data("neoforge_versions")
+        if cached:
+            return cached
         try:
-            # NeoForge versions are listed in their Maven repository
-            # We'll parse the maven-metadata.xml file
             metadata_url = f"{self.neoforge_maven_url}/maven-metadata.xml"
-            response = requests.get(metadata_url)
-            
-            if response.status_code == 200:
-                import xml.etree.ElementTree as ET
-                root = ET.fromstring(response.content)
-                
-                # Extract versions from the metadata
-                versions = []
-                for version in root.findall('.//version'):
-                    versions.append(version.text)
-                
-                jar_logger.info(f"Retrieved {len(versions)} NeoForge versions")
-                self._save_cache('neoforge_versions', versions)
-                return versions
-            else:
-                jar_logger.error(f"Failed to fetch NeoForge versions. Status code: {response.status_code}")
-                return []
+            async with session.get(metadata_url) as resp:
+                if resp.status != 200:
+                    return []
+                content = await resp.text()
+
+            import xml.etree.ElementTree as ET
+
+            root = ET.fromstring(content)
+            versions = [v.text for v in root.findall(".//version") if v.text]
+            await self._save_cache("neoforge_versions", versions)
+            return versions
         except Exception as e:
-            jar_logger.error(f"Error fetching NeoForge versions: {str(e)}")
+            jar_logger.error("get_neoforge_versions: %s", e)
             return []
 
-    async def downloadNeoForge(self, neoforge_version: str):
-        """Download NeoForge installer and optionally install the server (requires installer to be run)."""
-        jar_logger.info(f"Downloading NeoForge version {neoforge_version}")
-        
+    async def download_neoforge(
+        self, neoforge_version: str, session: aiohttp.ClientSession
+    ) -> Optional[str]:
         try:
-            # Download URL
-            download_url = f"{self.neoforge_maven_url}/{neoforge_version}/neoforge-{neoforge_version}-installer.jar"
+            download_url = (
+                f"{self.neoforge_maven_url}/{neoforge_version}"
+                f"/neoforge-{neoforge_version}-installer.jar"
+            )
             installer_path = f"versions/neoforge-{neoforge_version}-installer.jar"
-            
-            jar_logger.debug(f"Downloading from: {download_url}")
-            result = self._download_with_progress(download_url, installer_path)
-            
-            if not result:
-                jar_logger.error("Failed to download NeoForge installer")
-                return False
-            
-            return installer_path
-            
+            return await self._download_with_progress(
+                download_url, installer_path, session
+            )
         except Exception as e:
-            jar_logger.error(f"Error in downloadNeoForge: {str(e)}")
-            return False
+            jar_logger.error("download_neoforge: %s", e)
+            return None
 
 
+# ---------------------------------------------------------------------------
 # Example usage
+# ---------------------------------------------------------------------------
 async def main():
-    downloader = MinecraftServerDownloader()
-    
+    downloader = JarDownloader()
+
     print("[bold cyan]Minecraft Server Downloader[/bold cyan]\n")
-    
-    # Example: Download Fabric (direct JAR, no installation needed)
-    print("[yellow]Downloading Fabric 1.20.1...[/yellow]")
-    fabric_jar = downloader.downloadFabric("1.20.1")
-    if fabric_jar:
-        print(f"[green]✓ Fabric server JAR ready: {fabric_jar}[/green]")
-        print("[green]  (Ready to use - just run with java -jar)[/green]")
-    
-    # Example: Download and install Forge server (async)
-    print("\n[yellow]Downloading Forge 1.20.1...[/yellow]")
-    forge_result = await downloader.downloadForge("1.20.1")
-    if forge_result:
-        print(f"[green]✓ Forge server ready at: {forge_result}[/green]")
-    
-    # Example: Download and install NeoForge server (async)
-    print("\n[yellow]Downloading NeoForge 21.0.167...[/yellow]")
-    neoforge_result = await downloader.downloadNeoForge("21.0.167")
-    if neoforge_result:
-        print(f"[green]✓ NeoForge server ready at: {neoforge_result}[/green]")
-    
-    # Example: Just download installer without installing
-    print("\n[yellow]Downloading Forge installer only...[/yellow]")
-    installer = await downloader.downloadForge("1.19.4")
-    if installer:
-        print(f"[green]✓ Installer saved at: {installer}[/green]")
+
+    print("[yellow]Downloading Fabric 1.20.1…[/yellow]")
+    result = await downloader.download_jar("1.20.1", ServerType.FABRIC, Path("servers"))
+    if result:
+        print(f"[green]✓ Fabric ready: {result}[/green]")
+
+    print("\n[yellow]Downloading Forge 1.20.1…[/yellow]")
+    result = await downloader.download_jar("1.20.1", ServerType.FORGE, Path("servers"))
+    if result:
+        print(f"[green]✓ Forge installer: {result}[/green]")
+
+    print("\n[yellow]Downloading NeoForge 21.0.167…[/yellow]")
+    result = await downloader.download_jar(
+        "21.0.167", ServerType.NEOFORGE, Path("servers")
+    )
+    if result:
+        print(f"[green]✓ NeoForge installer: {result}[/green]")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

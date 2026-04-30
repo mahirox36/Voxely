@@ -19,6 +19,8 @@ from datetime import datetime
 import aiohttp
 import os
 import logging
+
+from pydantic import BaseModel
 from .http import HTTPClient
 from .versions import *
 from .utils import (
@@ -145,7 +147,7 @@ class ProjectHit:
         self.featured_gallery: Optional[str] = validate_input(data.get("featured_gallery"), "featured_gallery", required=False)
 
 
-class Project:
+class Project(BaseModel):
     """
     Represents a Modrinth project.
 

@@ -17,7 +17,7 @@ data/
 .venv
 
 test.*
-!.env
-*/.env
 .vscode
 .vscode2
+.env
+Needed/

@@ -14,3 +14,5 @@ watchfiles
 aiohttp
 websockets
 packaging
+slowapi
+pydantic-core

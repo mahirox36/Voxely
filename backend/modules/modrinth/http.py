@@ -87,7 +87,7 @@ class HTTPClient:
 
     BASE_URL = "https://api.modrinth.com/v2"
     DEFAULT_HEADERS = {
-        "User-Agent": "Mahirox36/Voxely/1.0.0"  # later add (voxely.mahirou.online)
+        "User-Agent": "Mahirox36/Voxely/1.0.0 (mahiroc36@gmail.com)"  # later add (voxely.mahirou.online)
     }
     MAX_RETRIES = 3
 

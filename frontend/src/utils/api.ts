@@ -1,10 +1,22 @@
 import axios from "axios";
 
-
-const isDev = process.env.NODE_ENV === "development";
+// Get API URL from environment variable, with fallback for development
+const getApiBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
+  // Fallback for development
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:25401/api/v1";
+  }
+  
+  // Default for production
+  return "/api/v1";
+};
 
 export const api = axios.create({
-  baseURL: isDev ? "http://localhost:25401/api/v1": "/api/v1", // all requests start here
+  baseURL: getApiBaseUrl(),
   timeout: 15000, // 15 seconds
 });
 

@@ -2,11 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
-    domains: [
-      "images.unsplash.com",
-      "minotar.net",
-      "cdn.modrinth.com",
-      "minecraft-api.vercel.app",
+    remotePatterns: [
+      // TODO: Change the minotar to crafthead 
+      { protocol: 'https', hostname: 'images.unsplash.com', port:'', pathname: "/**" },
+      { protocol: 'https', hostname: 'minotar.net', port:'', pathname: "/**" },
+      { protocol: 'https', hostname: 'cdn.modrinth.com', port:'', pathname: "/**" },
+      { protocol: 'https', hostname: 'minecraft-api.vercel.app', port:'', pathname: "/**" },
     ],
   },
 };

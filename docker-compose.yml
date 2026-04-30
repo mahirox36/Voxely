@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   backend:
     build: ./backend
@@ -5,31 +7,108 @@ services:
     expose:
       - "25401"
     volumes:
-      - ./backend/servers:/app/servers:Z
-      - ./backend/logs:/app/logs:Z
+      - ${BASE_PATH}/backend/servers:/app/servers:Z
+      - ${BASE_PATH}/backend/servers:/app/bin:Z
+      - ${BASE_PATH}/backend/logs:/app/logs:Z
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SECRET_KEY=${SECRET_KEY}
+      - ROOT_PASSWORD=${ROOT_PASSWORD}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
     networks:
       - app_network
+    # Resource limits - prevent container from consuming all system resources
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 1G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:25401/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   frontend:
     build: ./frontend
     container_name: voxely_frontend
     expose:
       - "3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
+      - NODE_ENV=${ENVIRONMENT:-development}
     networks:
       - app_network
     restart: unless-stopped
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    # Health check
+    # healthcheck:
+    #   test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   nginx:
     image: nginx:latest
-    container_name: nginx
+    container_name: voxely_nginx
     ports:
-      - "${HOST_PORT:-80}:80"
+      - "${HOST_PORT_HTTP:-80}:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
+      - ${BASE_PATH}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
     depends_on:
-      - frontend
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - app_network
+    restart: unless-stopped
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${HOST_PORT_HTTP:-80}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
 networks:
   app_network:
     driver: bridge

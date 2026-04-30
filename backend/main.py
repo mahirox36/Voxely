@@ -1,19 +1,28 @@
 from __future__ import annotations
 import asyncio
 
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 import sys
 from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
 import logging
+import os
+from dotenv import load_dotenv
+
+from modules.ServerService import ServerService
+from modules.Backup import BackupManager
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 custom_theme = Theme(
@@ -65,7 +74,54 @@ sys.excepthook = handle_exception
 logger = logging.getLogger(__name__)
 
 # Create the FastAPI app at module level
-from api.v1 import router as api_v1_router
+import api.v1  # noqa: F401
+
+async def auto_backup_loop():
+    """
+    Background loop that runs forever and checks if any
+    server is due for a backup.
+    """
+    server_service = ServerService()
+    while True:
+        await asyncio.sleep(60)
+
+        servers = server_service.servers.values()
+
+        for server in servers:
+            config = server.config.backup
+
+            if not config.enabled:
+                continue
+
+            now = datetime.now()
+            if config.last_backup is None:
+                server.config.backup.last_backup = now
+                await server.save_config()
+                continue
+
+            elapsed = now - config.last_backup
+            if elapsed >= timedelta(hours=config.interval_hours):
+                logger.info(
+                    f"Auto-backup triggered for {server.config.name} (last backup was {elapsed} ago)"
+                )
+
+                manager = BackupManager(server, backup_limit=config.max_backups)
+
+                try:
+                    await manager.create_backup()
+                    server.config.backup.last_backup = datetime.now()
+                    await server.save_config()
+
+                except Exception as e:
+                    logger.error(f"Auto-backup failed for {server.config.name}: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load the ML model
+    asyncio.create_task(auto_backup_loop())
+    yield
+    pass
 
 app = FastAPI(
     title="Voxely API",
@@ -76,18 +132,32 @@ app = FastAPI(
     # docs_url=None,  # Disable default docs URL
 )
 
-# Add CORS middleware
+# Add CORS middleware with restricted origins
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+allowed_origins = [url.strip() for url in frontend_url.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in development
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(api_v1_router)
+# Add rate limiter state
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded, 
+    lambda request, exc: JSONResponse(
+        status_code=429, 
+        content={"detail": "Rate limit exceeded"}
+    )
+)
 
 class APIConfig:
     def __init__(
@@ -132,7 +202,6 @@ class APIServer:
         except Exception as e:
             self.logger.error(f"Failed to start API server: {str(e)}")
             raise
-
 
 if __name__ == "__main__":
     config = APIConfig()
