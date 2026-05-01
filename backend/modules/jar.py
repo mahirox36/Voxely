@@ -1,17 +1,16 @@
-from enum import StrEnum
-import os
-from typing import Optional
-import json
-import time
 import asyncio
-import zipfile
-from pathlib import Path
-from modules.models import ServerType
-import aiohttp
-import aiofiles
-from rich import print
-from rich.progress import Progress, DownloadColumn, TransferSpeedColumn
+import json
 import logging
+import os
+import time
+from pathlib import Path
+from typing import Optional
+
+import aiofiles
+import aiohttp
+from modules.models import ServerType
+from rich import print
+from rich.progress import DownloadColumn, Progress, TransferSpeedColumn
 
 # ---------------------------------------------------------------------------
 # Logger setup

@@ -1,19 +1,18 @@
+import asyncio
+import logging
 import os
 import platform
 import shutil
 import stat
 import tarfile
 import zipfile
-import logging
-import asyncio
 from pathlib import Path
-from typing import Optional
 
-import aiohttp
 import aiofiles
-from rich import print
-from rich.progress import Progress, DownloadColumn, TransferSpeedColumn
+import aiohttp
 from packaging.version import Version
+from rich import print
+from rich.progress import DownloadColumn, Progress, TransferSpeedColumn
 
 # ---------------------------------------------------------------------------
 # Logger
@@ -60,10 +59,10 @@ class JavaManager:
         "https://api.adoptium.net/v3/binary/latest"
         "/{version}/ga/{os}/{arch}/jdk/hotspot/normal/eclipse"
     )
-    
+
     # Class-level state
     _init_done = False
-    
+
     # Pre-compute system info once at class level
     _system = platform.system().lower()
     _machine = platform.machine().lower()
@@ -72,7 +71,7 @@ class JavaManager:
 
     def __init__(self) -> None:
         self.BASE_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         if not JavaManager._init_done:
             java_logger.info(
                 "JavaManager initialized | system=%s arch=%s adoptium_os=%s adoptium_arch=%s",

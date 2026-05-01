@@ -1,43 +1,42 @@
 import asyncio
-from asyncio.subprocess import Process
 import json
 import logging
 import os
 import re
 import shutil
 import uuid
-import zipfile
+from asyncio.subprocess import Process
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional, Union
 
 import aiofiles
 import aiohttp
 import psutil
 from mcrcon import MCRcon
-from pydantic import SecretStr
-
 from modules.Backup import BackupManager
 from modules.jar import JarDownloader
-from modules.playitgg import download_playit
-from modules.router import WebSocketManager
 from modules.javaManager import JavaManager
+from modules.playitgg import download_playit
+from modules.router import WebSocketLogHandler, WebSocketManager
+from pydantic import BaseModel, SecretStr
+from watchfiles import Change, awatch
+
 from .models import (
+    AddonModel,
+    PlayerDataModel,
     PlayerDBResponse,
     PlayerDetails,
-    ServerResponse,
-    ServerType,
-    ServerStatus,
     ServerConfigModel,
     ServerCreationRequest,
     ServerMetricsModel,
-    AddonModel,
-    get_addon_type_for_server,
+    ServerResponse,
+    ServerStatus,
+    ServerType,
     get_addon_directory_name,
+    get_addon_type_for_server,
 )
-
-# from process_handler import ProcessHandler, ProcessStartResult
-# from event_router import WebSocketEventRouter, EventType
 
 logger = logging.getLogger("server_service")
 SECRET_KEY = os.getenv("SECRET_KEY", "idkwhatimdoingbu")
@@ -45,6 +44,9 @@ if SECRET_KEY == "idkwhatimdoingbu":
     logger.warning(
         "SECRET_KEY environment variable not set. Using default insecure key. This should be changed!"
     )
+
+JOIN_PATTERN = re.compile(r"(\w+)\[/[\d\.]+:(\d+)\] logged in")
+LEAVE_PATTERN = re.compile(r"(\w+) left the game")
 
 
 class ServerService:
@@ -59,14 +61,12 @@ class ServerService:
         self.servers_base_path = Path(servers_base_path)
         self.servers_base_path.mkdir(exist_ok=True)
         self.logger = logger
-        # name ->
         self.global_data_file = self.servers_base_path / "servers_data.json"
         self._load_servers_data()
 
     def _load_servers_data(self):
         """Crawl the servers directory and load each server's individual config."""
         for server_folder in self.servers_base_path.iterdir():
-            # Only look at directories that look like a UUID
             if server_folder.is_dir() and self._is_uuid(server_folder.name):
                 config_path = server_folder / "config.json"
 
@@ -77,7 +77,7 @@ class ServerService:
                             config = ServerConfigModel(**data)
 
                         self.servers[config.id] = ServerInstance(
-                            id=config.id,  # The UUID
+                            id=config.id,
                             path=self.servers_base_path,
                             java_manager=self.java_manager,
                             jar_downloader=self.jar_downloader,
@@ -89,7 +89,6 @@ class ServerService:
                         )
 
     def _is_uuid(self, name: str) -> bool:
-        # Quick regex check to ensure we aren't loading random folders
         uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
         return bool(re.match(uuid_pattern, name.lower()))
 
@@ -121,7 +120,7 @@ class ServerService:
 
         self.servers[server_id] = server_instance
         server_instance.socket = socket
-        await server_instance.save_config()  # Save initial config to disk
+        await server_instance.save_config()
         self.logger.info(
             f"Created server instance '{server_id}' with config: {config.json()}"
         )
@@ -160,6 +159,8 @@ class ServerService:
 
 
 class ServerInstance:
+    RCON_RETRY_COOLDOWN = 15
+
     def __init__(
         self,
         id: str,
@@ -188,9 +189,12 @@ class ServerInstance:
         self._output_task_playit: Optional[asyncio.Task] = None
         self._rcon: Optional[MCRcon] = None
         self._rcon_lock = asyncio.Lock()
+        self._rcon_last_failed: Optional[float] = None
         self.java_path: Optional[Path] = None
+        self._config_lock = asyncio.Lock()
+        self._stop_lock = asyncio.Lock()
 
-        self.console_buffer: List[str] = []  # Buffer to store console output lines
+        self.console_buffer: deque[str] = deque(maxlen=1000)
         self._session: Optional[aiohttp.ClientSession] = None
         self._headers = {
             "User-Agent": "VoxelyServerManager/1.0 (contact: mahiroc36@gmail.com)"
@@ -201,12 +205,14 @@ class ServerInstance:
         self.addon_path = self.path / get_addon_directory_name(
             get_addon_type_for_server(self.config.type)
         )
+        self._world_folder: Optional[Path] = None
+        self._psutil_proc: Optional[psutil.Process] = None
 
         self.backup = BackupManager(self)
 
         self._setup_logger()
 
-    async def emit(self, event: str, data: Any):
+    async def emit(self, event: str, data: Optional[Union[dict, BaseModel, list]]):
         """Helper to emit WebSocket events to the frontend."""
         if self.socket:
             await self.socket.emit(event, {"server_id": self.id, "data": data})
@@ -217,16 +223,34 @@ class ServerInstance:
         self.path.mkdir(parents=True, exist_ok=True)
 
         handler = logging.FileHandler(log_path)
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+
+        ws_handler = WebSocketLogHandler(self)
+        ws_handler.setFormatter(formatter)
+        self.logger.addHandler(ws_handler)
 
     async def save_config(self):
         """Save the current configuration to the server's local folder."""
         config_path = self.path / "config.json"
-        async with aiofiles.open(config_path, "w") as f:
-            await f.write(self.config.model_dump_json(indent=4))
+        async with self._config_lock:
+            async with aiofiles.open(config_path, "w") as f:
+                await f.write(self.config.model_dump_json(indent=4))
+
+    async def _update_config(self, updater):
+        """
+        Atomically apply a mutation and persist it.
+        `updater` is a callable that receives `self.config` and modifies it in-place.
+
+        Usage:
+            await self._update_config(lambda c: c.addons.append(addon))
+        """
+        async with self._config_lock:
+            updater(self.config)
+            config_path = self.path / "config.json"
+            async with aiofiles.open(config_path, "w") as f:
+                await f.write(self.config.model_dump_json(indent=4))
 
     async def _install_playit(self) -> Path | None:
         if self.config.use_playit:
@@ -254,7 +278,7 @@ class ServerInstance:
             )
             await self.emit(
                 "server.jar.downloading",
-                {"server_id": self.id, "config": self.config.model_dump(mode="json")},
+                {"server_id": self.id, "config": self.config},
             )
             jar_path = await self.jar_downloader.download_jar(
                 self.config.version, self.config.type, self.path
@@ -266,7 +290,7 @@ class ServerInstance:
 
             await self.emit(
                 "server.java.downloading",
-                {"server_id": self.id, "config": self.config.model_dump(mode="json")},
+                {"server_id": self.id, "config": self.config},
             )
 
             self.java_path = await self.java_manager.get_java_path(self.config.version)
@@ -278,7 +302,7 @@ class ServerInstance:
             await self.save_config()
             await self.emit(
                 "server.initialized",
-                {"server_id": self.id, "config": self.config.model_dump(mode="json")},
+                {"server_id": self.id, "config": self.config},
             )
 
         except Exception as e:
@@ -299,7 +323,7 @@ class ServerInstance:
         content = f"""motd={self.config.name}\nmax-players={self.config.players_limit}\nserver-port={self.config.port}\nenable-rcon=true\nrcon.password={self.config.name}{SECRET_KEY}\nrcon.port=25575"""
         async with aiofiles.open(props_file, "w") as f:
             await f.write(content)
-        self.logger.debug(f"Created server.properties")
+        self.logger.debug("Created server.properties")
 
     async def start(self):
         """Start the Minecraft server process."""
@@ -362,8 +386,7 @@ class ServerInstance:
                 stderr=asyncio.subprocess.STDOUT,
             )
             self.status = ServerStatus.STARTING
-            loop = asyncio.get_running_loop()
-            self.started_at = loop.time()
+            self.started_at = asyncio.get_event_loop().time()
             await self.emit("server.starting", {"server_id": self.id})
 
             self._output_task = asyncio.create_task(self._read_output())
@@ -382,7 +405,6 @@ class ServerInstance:
             )
 
     async def _read_output(self):
-        # .stdout is now an asyncio.StreamReader, which is non-blocking
         if not self.process or not self.process.stdout:
             self.logger.error(f"Process or stdout not available for server '{self.id}'")
             return
@@ -398,25 +420,73 @@ class ServerInstance:
             await self.emit(
                 "server.output", {"server_id": self.id, "line": decoded_line}
             )
+
+            await self._handle_log_event(decoded_line)
+
             self.console_buffer.append(decoded_line)
-            if len(self.console_buffer) > 1000:
-                self.console_buffer.pop(0)
 
             if "Done (" in decoded_line:
                 self.status = ServerStatus.ONLINE
                 await self.emit("server.online", {"server_id": self.id})
 
+    async def _handle_log_event(self, line: str):
+        timestamp = datetime.now().isoformat()
+
+        join_match = JOIN_PATTERN.search(line)
+        if join_match:
+            username = join_match.group(1)
+            await self._record_player_event(username, "join", timestamp)
+            return
+
+        leave_match = LEAVE_PATTERN.search(line)
+        if leave_match:
+            username = leave_match.group(1)
+            await self._record_player_event(username, "leave", timestamp)
+            return
+
+    async def _record_player_event(
+        self, username: str, event_type: str, timestamp: str
+    ):
+        player_data = await self._get_user_data(username)
+        if not player_data:
+            self.logger.warning(
+                f"Could not find player data for '{username}' to record {event_type} event."
+            )
+            return
+
+        new_entry = PlayerDataModel(
+            uuid=player_data.id,
+            username=player_data.username,
+            timestamp=timestamp,
+            event_type=event_type,
+            account_data=player_data,
+        )
+
+        def upsert_player(c: ServerConfigModel):
+            for i, p in enumerate(c.all_players):
+                if p.uuid == player_data.id:
+                    c.all_players[i] = new_entry
+                    return
+            c.all_players.append(new_entry)
+
+        await self.emit(f"player.{event_type}", new_entry)
+        self.logger.info(f"Player {username} {event_type}ed.")
+        await self._update_config(upsert_player)
+
     async def _monitor_process(self):
-        """Monitor the server resources and players and tps using function get_metrics every 10 seconds."""
         while self.status in (ServerStatus.STARTING, ServerStatus.ONLINE):
+            if self.process and self.process.returncode is not None:
+                # Process died unexpectedly
+                self.status = ServerStatus.OFFLINE
+                self._world_folder = None
+                await self.emit("server.crashed", {"server_id": self.id})
+                break
             await self.get_metrics()
             await self.emit(
                 "server.metrics",
                 {
                     "server_id": self.id,
-                    "metrics": (
-                        self.metrics.model_dump(mode="json") if self.metrics else None
-                    ),
+                    "metrics": (self.metrics if self.metrics else None),
                 },
             )
             await asyncio.sleep(2 if self.socket else 30)
@@ -432,31 +502,40 @@ class ServerInstance:
 
     async def stop(self, force: bool = False):
         """Stop the Minecraft server process gracefully."""
-        if self.status != ServerStatus.ONLINE or not self.process:
-            self.logger.warning(f"Server '{self.id}' is not running.")
-            return
+        async with self._stop_lock:
+            if self.status != ServerStatus.ONLINE or not self.process:
+                self.logger.warning(f"Server '{self.id}' is not running.")
+                return
 
-        try:
-            asyncio.create_task(self._stop_playit())
+            try:
+                asyncio.create_task(self._stop_playit())
 
-            if self._output_task:
-                self._output_task.cancel()
-            if self._monitor_task:
-                self._monitor_task.cancel()
+                if self._output_task:
+                    self._output_task.cancel()
+                if self._monitor_task:
+                    self._monitor_task.cancel()
 
-            self.logger.info(f"Stopping server '{self.id}'...")
-            self.status = ServerStatus.STOPPING
-            await self.emit("server.stopping", {"server_id": self.id})
-            await self.send_command("save-all")
-            await asyncio.sleep(1)
-            await self.send_command("stop")
-            await self.process.wait()
-            self.status = ServerStatus.OFFLINE
-            await self.emit("server.stopped", {"server_id": self.id})
-        except Exception as e:
-            self.logger.error(f"Failed to stop server '{self.id}': {e}")
-            if force:
-                await self.kill()
+                self.logger.info(f"Stopping server '{self.id}'...")
+                self.status = ServerStatus.STOPPING
+                await self.emit("server.stopping", {"server_id": self.id})
+                await self.send_command("save-all")
+                await asyncio.sleep(1)
+                await self.send_command("stop")
+                try:
+                    await asyncio.wait_for(self.process.wait(), timeout=60)
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        f"Server '{self.id}' did not stop in time, killing."
+                    )
+                    await self.kill()
+                self.status = ServerStatus.OFFLINE
+                await self._close_session()
+                self._world_folder = None
+                await self.emit("server.stopped", {"server_id": self.id})
+            except Exception as e:
+                self.logger.error(f"Failed to stop server '{self.id}': {e}")
+                if force:
+                    await self.kill()
 
     async def restart(self):
         """Restart the Minecraft server process."""
@@ -466,13 +545,14 @@ class ServerInstance:
 
     async def kill(self):
         """Forcefully kill the Minecraft server process."""
-        if self.process and self.status == ServerStatus.ONLINE:
+        if self.process and self.status in (ServerStatus.ONLINE, ServerStatus.STARTING):
             self.status = ServerStatus.STOPPING
             await self.emit("server.stopping", {"server_id": self.id})
             self.logger.warning(f"Forcefully killing server '{self.id}'...")
             self.process.kill()
             await self.process.wait()
             self.status = ServerStatus.OFFLINE
+            self._world_folder = None
             await self.emit("server.stopped", {"server_id": self.id})
 
     async def _start_playit(self):
@@ -496,17 +576,24 @@ class ServerInstance:
                     cwd=self.path,
                 )
 
+                if self._output_task_playit and not self._output_task_playit.done():
+                    self._output_task_playit.cancel()
+                    try:
+                        await self._output_task_playit
+                    except asyncio.CancelledError:
+                        pass
+
                 self._output_task_playit = asyncio.create_task(
                     self._read_playit_output()
                 )
 
-                exit_code = await self.playit_process.wait()
+                _exit_code = await self.playit_process.wait()
 
             except Exception as e:
                 self.logger.error(f"Playit watchdog error: {e}")
 
             if self.status in (ServerStatus.STARTING, ServerStatus.ONLINE):
-                self.logger.warning(f"Playit process exited. Restarting in 5s...")
+                self.logger.warning("Playit process exited. Restarting in 5s...")
                 await asyncio.sleep(5)
             else:
                 break
@@ -527,29 +614,26 @@ class ServerInstance:
 
             await self.emit("server.playit.output", {"line": decoded_line})
 
-            # 1. Capture Claim URL (e.g., https://playit.gg/claim/XXXX-XXXX)
             if "https://playit.gg/claim/" in decoded_line:
-                # Extract the actual URL from the line to be precise
                 match = re.search(r"(https://playit\.gg/claim/[^\s]+)", decoded_line)
                 url = match.group(1) if match else decoded_line
                 await self.emit("server.playit.claim_url", {"url": url})
                 self.logger.info(f"Playit Claim URL generated: {url}")
 
-            # 2. Capture Secret from log
             if "secret =" in decoded_line or "secret:" in decoded_line:
                 match = re.search(
                     r'secret\s*[=:]\s*["\']?(.*?)["\']?(\s|$)', decoded_line
                 )
                 if match:
                     new_secret = match.group(1).strip()
-                    self.config.playit_secret = SecretStr(new_secret)
-                    await self.save_config()
+                    await self._update_config(
+                        lambda c: setattr(c, "playit_secret", SecretStr(new_secret))
+                    )
                     self.logger.info("Playit secret captured and saved to config.")
 
     async def send_command(self, command: str):
         """Send a command to the server via RCON without blocking the loop."""
         if not self._rcon:
-            # Note: _connect_rcon also needs to be thread-safe or async-wrapped
             await self._connect_rcon()
 
         if self._rcon:
@@ -561,13 +645,18 @@ class ServerInstance:
                     return response
                 except Exception as e:
                     self.logger.error(f"RCON Error: {e}")
-                    # If it's a network error, clear the connection so it reconnects
                     self._rcon = None
                     return None
         return None
 
     async def _connect_rcon(self):
         """Establish an RCON connection to the server."""
+        now = asyncio.get_event_loop().time()
+        if (
+            self._rcon_last_failed
+            and (now - self._rcon_last_failed) < self.RCON_RETRY_COOLDOWN
+        ):
+            return  # Still in cooldown
         try:
             self._rcon = MCRcon(
                 "localhost",
@@ -577,10 +666,12 @@ class ServerInstance:
             )
             self._rcon.connect()
             self.logger.info(f"Established RCON connection for server '{self.id}'")
+            self._rcon_last_failed = None
         except Exception as e:
             self.logger.error(
                 f"Failed to establish RCON connection for server '{self.id}': {e}"
             )
+            self._rcon_last_failed = asyncio.get_event_loop().time()
             self._rcon = None
 
     async def get_metrics(self) -> Optional[ServerMetricsModel]:
@@ -592,24 +683,29 @@ class ServerInstance:
             return None
 
         try:
-            # Get player count from RCON
             player_task = asyncio.create_task(self.send_command("list"))
 
             tps_task = asyncio.create_task(self.send_command("spark tps"))
 
-            # Get CPU and RAM usage using psutil
-            loop = asyncio.get_running_loop()
             if self.process and self.process.pid:
-                proc = psutil.Process(self.process.pid)
-                # Use run_in_executor so the 1-second interval happens in a background thread
-                cpu_usage = await loop.run_in_executor(None, proc.cpu_percent, 1)
-                ram_usage = proc.memory_info().rss // (1024 * 1024)
+                if not self._psutil_proc:
+                    self._psutil_proc = psutil.Process(self.process.pid)
+                    self._psutil_proc.cpu_percent()
+                    cpu_usage = 0.0
+                else:
+                    cpu_usage = await asyncio.to_thread(
+                        self._psutil_proc.cpu_percent, interval=None
+                    )
+                mem = await asyncio.to_thread(self._psutil_proc.memory_info)
+                ram_usage = mem.rss // (1024 * 1024)
+
             else:
                 cpu_usage = 0.0
                 ram_usage = 0.0
 
-            player_list_response = await player_task
-            tps_response = await tps_task
+            player_list_response, tps_response = await asyncio.gather(
+                player_task, tps_task
+            )
 
             player_count = 0
             if player_list_response and "There are" in player_list_response:
@@ -625,8 +721,7 @@ class ServerInstance:
                     tps = float(match.group(1))
 
             if self.status == ServerStatus.ONLINE and self.started_at is not None:
-                # self.started_at should have been set using loop.time()
-                uptime_seconds = loop.time() - self.started_at
+                uptime_seconds = asyncio.get_event_loop().time() - self.started_at
                 uptime = str(timedelta(seconds=int(uptime_seconds)))
             else:
                 uptime = "Offline"
@@ -657,7 +752,11 @@ class ServerInstance:
             await f.write(content)
         self.logger.debug(f"Accepted EULA for server '{self.id}' by creating eula.txt")
         self.config.eula_accepted = True
-        await self.save_config()
+
+        async def _update(c):
+            c.eula_accepted = True
+
+        await self._update_config(_update)
 
     async def _get_user_data(self, username: str) -> Optional[PlayerDetails]:
         username = username.strip().lower()
@@ -665,7 +764,6 @@ class ServerInstance:
             return self._cached_user_data[username]
 
         if not self._session or self._session.closed:
-            # Safety fallback: re-open if session was never created
             self._session = aiohttp.ClientSession(headers=self._headers)
 
         try:
@@ -700,12 +798,10 @@ class ServerInstance:
                 except json.JSONDecodeError:
                     data = []
 
-        # Check for existing entry by UUID
         existing = next((item for item in data if item["uuid"] == player_info.id), None)
 
         if add:
             if not existing:
-                # Explicitly type the dict as Dict[str, Any]
                 new_entry: dict[str, Any] = {
                     "uuid": player_info.id,
                     "name": player_info.username,
@@ -747,7 +843,6 @@ class ServerInstance:
             )
             return False
 
-        # Mapping logic
         config = {
             "whitelist_add": ("whitelist add", "whitelist.json", True),
             "whitelist_remove": ("whitelist remove", "whitelist.json", False),
@@ -765,7 +860,6 @@ class ServerInstance:
         else:
             return await self._modify_list_file(filename, player_data, should_add)
 
-    # Clean Public API for your Dashboard
     async def whitelist_player(self, username: str) -> bool:
         return await self.manage_player(username, "whitelist_add")
 
@@ -784,8 +878,6 @@ class ServerInstance:
     async def deop_player(self, username: str) -> bool:
         return await self.manage_player(username, "deop")
 
-    # TODO: Make Addons Functional and add Backup and Restore functions for server data and configs
-
     async def add_addon(self, addon: AddonModel):
         """Add an addon to the server's addon config. no need to handle file moving here, just update the config and let the frontend handle the rest."""
         try:
@@ -795,8 +887,7 @@ class ServerInstance:
                 )
                 return
 
-            self.config.addons.append(addon)
-            await self.save_config()
+            await self._update_config(lambda c: c.addons.append(addon))
             self.logger.info(
                 f"Added addon '{addon.project.title} {addon.version.name}' to server '{self.id}' config."
             )
@@ -821,8 +912,12 @@ class ServerInstance:
                 )
                 return
 
-            self.config.addons.remove(addon_to_remove)
-            await self.save_config()
+            def _update(c):
+                addon = next((a for a in c.addons if a.project.id == project_id), None)
+                if addon:
+                    c.addons.remove(addon)
+
+            await self._update_config(_update)
             self.logger.info(
                 f"Removed addon '{addon_to_remove.project.title} {addon_to_remove.version.name}' from server '{self.id}' config."
             )
@@ -831,13 +926,9 @@ class ServerInstance:
             self.logger.error(f"Failed to remove addon: {e}")
 
     @property
-    def list_addons(self) -> List[AddonModel]:
+    def addons(self) -> List[AddonModel]:
         """Return the list of addons currently in the server's config."""
         return self.config.addons
-
-    def export_addons(self) -> List[Dict[str, Any]]:
-        """Return the list of addons in a JSON-serializable format."""
-        return [addon.model_dump(mode="json") for addon in self.config.addons]
 
     async def list_untracked_addons(self) -> List[str]:
         """
@@ -867,16 +958,34 @@ class ServerInstance:
         if not response:
             return []
 
-        # Regex to find the part after the colon
         match = re.search(r"online: (.*)", response)
         if match:
             players_str = match.group(1).strip()
             if not players_str:
                 return []
-            # Split by comma and clean up whitespace
             return [p.strip() for p in players_str.split(",")]
 
         return []
+
+    @property
+    def players(self) -> list[PlayerDataModel]:
+        """Cached property to get online players without making multiple RCON calls."""
+        return self.config.all_players
+
+    async def world_folder(self) -> Path:
+        """Helper to get the path to the world folder."""
+        if self._world_folder:
+            return self._world_folder
+        properties_path = self.path / "server.properties"
+        if properties_path.exists():
+            async with aiofiles.open(properties_path, "r") as f:
+                content = await f.read()
+                match = re.search(r"level-name=(.*)", content)
+                world_name: str = match.group(1).strip() if match else "world"
+        else:
+            world_name = "world"
+        self._world_folder = self.path / world_name
+        return self._world_folder
 
     async def export_server(self):
         """Return a dictionary representation of the server instance for API responses."""
@@ -896,10 +1005,132 @@ class ServerInstance:
             ),
             jar_path=self.config.jar_path,
             players=await self.get_online_players(),
-            # addons=[addon.model_dump(mode="json") for addon in self.config.addons],
-            logs=self.console_buffer[-100:],  # Last 100 lines
+            all_players=self.config.all_players,
+            logs=list(self.console_buffer)[-100:],
             use_playit=self.config.use_playit,
             playit_secret=(
                 self.config.playit_secret if self.config.playit_secret else None
             ),
         )
+
+    async def start_file_watchdog(self) -> None:
+        """
+        Start an async watchdog that monitors every file change inside the
+        server directory and emits structured events to the connected client.
+
+        The task is stored in ``self._watchdog_task`` so it can be cancelled
+        cleanly on ``stop()`` / ``kill()``.  Calling this when a watchdog is
+        already running is a no-op.
+        """
+        if getattr(self, "_watchdog_task", None) and not self._watchdog_task.done():
+            self.logger.debug(f"Watchdog already running for server '{self.id}'")
+            return
+
+        self._watchdog_task: asyncio.Task = asyncio.create_task(
+            self._run_file_watchdog(),
+            name=f"watchdog-{self.id}",
+        )
+        self.logger.info(f"File watchdog started for server '{self.id}'")
+
+    async def _run_file_watchdog(self) -> None:
+        """
+        Internal coroutine that drives the watchfiles async iterator.
+
+        Each filesystem event is translated into a structured payload and
+        emitted via ``self.emit("server.files.changed", ...)`` so the
+        frontend can react immediately (e.g. refresh the file tree, highlight
+        the modified file, show a toast, etc.).
+
+        Emitted payload shape:
+        {
+            "changes": [
+                {
+                    "type": "added" | "modified" | "deleted",
+                    "path": "<path relative to server root>",
+                    "name": "<filename>",
+                    "is_dir": bool,
+                    "size": int | None,         None for deletions
+                    "modified": str | None,     ISO-8601, None for deletions
+                },
+                ...
+            ]
+        }
+        """
+        _CHANGE_TYPE: dict[Change, str] = {
+            Change.added: "added",
+            Change.modified: "modified",
+            Change.deleted: "deleted",
+        }
+
+        _IGNORED_NAMES = {
+            "session.lock",
+            "server.log",
+            ".git",
+        }
+        _IGNORED_SUFFIXES = {".tmp", ".part", ".lck"}
+
+        try:
+            async for batch in awatch(self.path, recursive=True):
+                if not self.socket:
+                    continue
+
+                changes: list[dict] = []
+
+                for change_type, raw_path in batch:
+                    path = Path(raw_path)
+
+                    if path.name in _IGNORED_NAMES:
+                        continue
+                    if path.suffix in _IGNORED_SUFFIXES:
+                        continue
+                    if ".git" in path.parts:
+                        continue
+
+                    try:
+                        rel = path.relative_to(self.path)
+                    except ValueError:
+                        rel = path
+
+                    entry: dict = {
+                        "type": _CHANGE_TYPE.get(change_type, "modified"),
+                        "path": str(rel),
+                        "name": path.name,
+                        "is_dir": path.is_dir(),
+                        "size": None,
+                        "modified": None,
+                    }
+
+                    if change_type in (Change.added, Change.modified) and path.exists():
+                        try:
+                            stat = path.stat()
+                            if not path.is_dir():
+                                entry["size"] = stat.st_size
+                            entry["modified"] = datetime.fromtimestamp(
+                                stat.st_mtime
+                            ).isoformat()
+                        except OSError:
+                            pass
+
+                    changes.append(entry)
+
+                if changes:
+                    await self.emit("server.files.changed", {"changes": changes})
+                    self.logger.debug(
+                        f"Watchdog emitted {len(changes)} change(s) for server '{self.id}'"
+                    )
+
+        except asyncio.CancelledError:
+            self.logger.info(f"File watchdog cancelled for server '{self.id}'")
+        except Exception as exc:
+            self.logger.error(f"File watchdog error for server '{self.id}': {exc}")
+
+    async def stop_file_watchdog(self) -> None:
+        """Cancel the file watchdog task if it is running."""
+        task: asyncio.Task | None = getattr(self, "_watchdog_task", None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info(f"File watchdog stopped for server '{self.id}'")

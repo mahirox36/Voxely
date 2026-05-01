@@ -3,10 +3,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from modules.models import AddonModel
-from modules.ServerService import ServerService, get_addon_type_for_server
-from modules.modrinth.utils import Facet, FacetType, SideType
 from modules.modrinth import Client
+from modules.modrinth.utils import Facet, FacetType, SideType
 from modules.router import WebSocketManager, router
+from modules.ServerService import ServerService, get_addon_type_for_server
 from pydantic import BaseModel, Field, field_validator
 
 modrinth_logger = logging.getLogger("modrinth")
@@ -49,12 +49,14 @@ class DownloadRequest(BaseModel):
 async def send_error(ws: WebSocketManager, event: str, message: str):
     await ws.emit(f"{event}.error", {"message": message})
 
+
 @router.on_connect()
 async def plugins_init(ws: WebSocketManager):
     global client
     if client is None:
         client = Client()
         modrinth_logger.info("Initialized Modrinth client")
+
 
 @router.on("plugins.search")
 async def search_mods(ws: WebSocketManager, request: SearchRequest):
@@ -138,7 +140,12 @@ async def download_mod(
             project = await client.get_project(version.project_id)
 
         path = await version.download_primary(server.addon_path)
-        server_addon = AddonModel(project=project, version=version, path=Path(path), addon_type=get_addon_type_for_server(server.config.type))  # type: ignore
+        server_addon = AddonModel(
+            project=project,
+            version=version,
+            path=Path(path),
+            addon_type=get_addon_type_for_server(server.config.type),  # type: ignore
+        )
         await server.add_addon(server_addon)
 
         await ws.emit(
@@ -176,9 +183,10 @@ async def list_plugins(ws: WebSocketManager, server_id: str):
         if not server:
             return await send_error(ws, "plugins.list", "Server not found")
 
-        await ws.emit("plugins.list.success", server.export_addons())
+        await ws.emit("plugins.list.success", server.addons)
     except Exception as e:
         await send_error(ws, "plugins.list", str(e))
+
 
 @router.on("plugins.list.untracked")
 async def list_untracked_plugins(ws: WebSocketManager, server_id: str):
@@ -187,7 +195,9 @@ async def list_untracked_plugins(ws: WebSocketManager, server_id: str):
         if not server:
             return await send_error(ws, "plugins.list.untracked", "Server not found")
 
-        await ws.emit("plugins.list.untracked.success", await server.list_untracked_addons())
+        await ws.emit(
+            "plugins.list.untracked.success", await server.list_untracked_addons()
+        )
     except Exception as e:
         await send_error(ws, "plugins.list.untracked", str(e))
 

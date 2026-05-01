@@ -1,10 +1,10 @@
 import asyncio
+import logging
 import shutil
 import tarfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-import logging
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from modules.ServerService import ServerInstance
@@ -67,28 +67,38 @@ class BackupManager:
             old_backup = backups.pop(0)
             await asyncio.to_thread(old_backup.unlink)
             self.logger.info(f"Rotated old backup: {old_backup.name}")
+
     async def list_backups(self) -> list[dict[str, Any]]:
         """List existing backups with metadata."""
         backups = sorted(
-            self.backup_root.glob("*.tar.gz"), key=lambda x: x.stat().st_mtime, reverse=True
+            self.backup_root.glob("*.tar.gz"),
+            key=lambda x: x.stat().st_mtime,
+            reverse=True,
         )
         return [
             {
                 "filename": backup.name,
-                "created_at": datetime.fromtimestamp(backup.stat().st_mtime).isoformat(),
+                "created_at": datetime.fromtimestamp(
+                    backup.stat().st_mtime
+                ).isoformat(),
                 "size_mb": round(backup.stat().st_size / (1024 * 1024), 2),
             }
             for backup in backups
         ]
-    
+
     async def restore_backup(self, filename: str):
         """Restore a backup by filename."""
         backup_path = self.backup_root / filename
         if not backup_path.exists():
             raise FileNotFoundError(f"Backup file {filename} not found")
 
-        self.logger.info(f"Restoring backup {filename} for {self.server.config.name}...")
-        await self.server.emit("backup.restoring", {"filename": filename, "timestamp": datetime.now().isoformat()})
+        self.logger.info(
+            f"Restoring backup {filename} for {self.server.config.name}..."
+        )
+        await self.server.emit(
+            "backup.restoring",
+            {"filename": filename, "timestamp": datetime.now().isoformat()},
+        )
 
         # Stop the server if it's running
         was_running = self.server.status == "running"
@@ -108,7 +118,10 @@ class BackupManager:
             tar.extractall(path=self.server.path)
 
         self.logger.info(f"Restored backup {filename} for {self.server.config.name}")
-        await self.server.emit("backup.restored", {"filename": filename, "timestamp": datetime.now().isoformat()})
+        await self.server.emit(
+            "backup.restored",
+            {"filename": filename, "timestamp": datetime.now().isoformat()},
+        )
 
         # Restart the server if it was running before
         if was_running:

@@ -1,6 +1,9 @@
 import asyncio
+import inspect
 import logging
+import types
 from typing import (
+    TYPE_CHECKING,
     Awaitable,
     Callable,
     Concatenate,
@@ -8,17 +11,20 @@ from typing import (
     Optional,
     ParamSpec,
     Union,
-    get_type_hints,
-    get_origin,
     get_args,
+    get_origin,
+    get_type_hints,
 )
-import types
 
 from fastapi import (
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from .ServerService import ServerInstance
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +32,6 @@ P = ParamSpec("P")
 
 HandlerType = Callable[Concatenate["WebSocketManager", P], Awaitable[None]]
 HandlerTypeNoTake = Callable[["WebSocketManager"], Awaitable[None]]
-
-import inspect
-from typing import get_type_hints
 
 
 def _validate_and_cast(func: HandlerType, kwargs: dict) -> dict:
@@ -119,14 +122,17 @@ class EventRouter:
             logger.info(f"Signed {event_type}")
             self.handlers[event_type] = func
             return func
+
         return decorator
 
     def on_connect(self):
         """Decorator to register a function to run when a client connects."""
+
         def decorator(func: HandlerTypeNoTake):
             logger.info(f"Signed {func.__name__} as on connect")
             self.on_entry.append(func)
             return func
+
         return decorator
 
     def on_disconnect(self):
@@ -134,6 +140,7 @@ class EventRouter:
             logger.info(f"Signed {func.__name__} as on disconnect")
             self.on_exit.append(func)
             return func
+
         return decorator
 
     async def connect(self, ws_manager: "WebSocketManager"):
@@ -166,6 +173,11 @@ class EventRouter:
             await handler(ws_manager, **validated_kwargs)
         except TypeError as e:
             logger.error(f"Validation error for '{event_type}': {e}")
+        except (WSEventError, HTTPException) as e:
+            await ws_manager.emit(
+                f"{event_type}.error",
+                {"status_code": e.status_code, "message": e.detail},
+            )
         except Exception:
             logger.exception("Something went wrong")
 
@@ -178,6 +190,7 @@ class EventRouter:
             for r in results:
                 if isinstance(r, Exception):
                     logger.error("on_exit handler failed", exc_info=r)
+
 
 router = EventRouter()
 
@@ -271,6 +284,7 @@ class WebSocketManager:
         self._cleanup_lock = asyncio.Lock()
         self.cleaned_user = False
         self.logger = logging.getLogger(f"{self.user}")
+        self.server_instances: dict[str, "ServerInstance"] = {}
 
     async def start(self):
         """Entry point to manage WebSocket lifecycle."""
@@ -357,6 +371,8 @@ class WebSocketManager:
 
         self._closing = True
 
+        await self.unsubscribe_all()
+
         if self.message_task and not self.message_task.done():
             self.message_task.cancel()
             try:
@@ -383,7 +399,34 @@ class WebSocketManager:
             # Connection might already be closed, ignore
             pass
 
-    async def emit(self, event: str, data: Optional[Union[dict, BaseModel, list]] = None):
+    async def subscribe_server(self, server: "ServerInstance") -> None:
+        """Attach a server to this socket and start its file watchdog."""
+        if server.id in self.server_instances:
+            return
+
+        server.socket = self
+        self.server_instances[server.id] = server
+        await server.start_file_watchdog()
+        logger.info(f"Client subscribed to server '{server.id}'")
+
+    async def unsubscribe_server(self, server_id: str) -> None:
+        """Detach a server from this socket and stop its file watchdog."""
+        server = self.server_instances.pop(server_id, None)
+        if server is None:
+            return
+
+        await server.stop_file_watchdog()
+        server.socket = None
+        logger.info(f"Client unsubscribed from server '{server_id}'")
+
+    async def unsubscribe_all(self) -> None:
+        """Stop all watchdogs — called on disconnect."""
+        for server_id in list(self.server_instances):
+            await self.unsubscribe_server(server_id)
+
+    async def emit(
+        self, event: str, data: Optional[Union[dict, BaseModel, list]] = None
+    ):
         """Send an event to this WebSocket client."""
         payload = {"t": event}
         if data:
@@ -394,6 +437,37 @@ class WebSocketManager:
             await self.cm.broadcast(payload)
         except Exception as e:
             logger.warning(f"Failed to send message to {self.user}: {e}")
+
+
+class WebSocketLogHandler(logging.Handler):
+    def __init__(self, server_instance):
+        super().__init__()
+        self.server = server_instance
+        self._is_emitting = False
+
+    def emit(self, record):
+        if self._is_emitting:
+            return
+        try:
+            self._is_emitting = True
+            log_entry = self.format(record)
+            payload = {"message": log_entry, "level": record.levelname}
+
+            try:
+                loop = asyncio.get_running_loop()
+                if loop.is_running():
+                    loop.create_task(self.server.emit("server.log", payload))
+            except RuntimeError:
+                pass
+        finally:
+            self._is_emitting = False
+
+
+class WSEventError(Exception):
+    def __init__(self, status_code: int = 400, detail: Optional[str] = None):
+        self.detail = detail
+        self.status_code = status_code
+        super().__init__(detail)
 
 
 @router.on("ping")

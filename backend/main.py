@@ -1,25 +1,23 @@
 from __future__ import annotations
-import asyncio
 
+import asyncio
+import logging
+import os
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from logging.handlers import RotatingFileHandler
-import sys
-from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Request
+from typing import Optional
+
+from dotenv import load_dotenv
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-import uvicorn
+from fastapi.responses import JSONResponse
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
-import logging
-import os
-from dotenv import load_dotenv
-
-from modules.ServerService import ServerService
-from modules.Backup import BackupManager
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 # Load environment variables from .env file
 load_dotenv()
@@ -73,8 +71,12 @@ sys.excepthook = handle_exception
 
 logger = logging.getLogger(__name__)
 
-# Create the FastAPI app at module level
-import api.v1  # noqa: F401
+
+import uvicorn  # noqa: E402
+from api.v1 import apiV1  # noqa: E402
+from modules.Backup import BackupManager  # noqa: E402
+from modules.ServerService import ServerService  # noqa: E402
+
 
 async def auto_backup_loop():
     """
@@ -117,11 +119,12 @@ async def auto_backup_loop():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     # Load the ML model
     asyncio.create_task(auto_backup_loop())
     yield
     pass
+
 
 app = FastAPI(
     title="Voxely API",
@@ -144,20 +147,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add rate limiter state
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(
-    RateLimitExceeded, 
+    RateLimitExceeded,
     lambda request, exc: JSONResponse(
-        status_code=429, 
-        content={"detail": "Rate limit exceeded"}
-    )
+        status_code=429, content={"detail": "Rate limit exceeded"}
+    ),
 )
+
+app.include_router(apiV1)
+
 
 class APIConfig:
     def __init__(
@@ -196,12 +197,13 @@ class APIServer:
         server = uvicorn.Server(config)
         try:
             self.logger.info(
-                f"Starting API server on {self.config.host}:{self.config.port}"
+                f"Starting API server on http://{self.config.host}:{self.config.port}"
             )
             await server.serve()
         except Exception as e:
             self.logger.error(f"Failed to start API server: {str(e)}")
             raise
+
 
 if __name__ == "__main__":
     config = APIConfig()
