@@ -18,7 +18,7 @@ from slowapi.util import get_remote_address
 load_dotenv()
 
 DATA_FILE = Path("servers/data.json")
-router = APIRouter(prefix="/auth", tags=["auth"])
+api = APIRouter(prefix="/auth", tags=["auth"])
 
 # Setup rate limiting
 limiter = Limiter(key_func=get_remote_address)
@@ -150,21 +150,23 @@ async def get_current_user(request: Request) -> UserResponse:
     return UserResponse(username=username)
 
 
+total_ram = round(psutil.virtual_memory().total / (1024**2))  # MB
+
+
 # Routes
-@router.get("/first_time")
+@api.get("/first_time")
 async def first():
     if not ROOT_PASSWORD:
         return True
     return False
 
 
-@router.get("/system-info")
+@api.get("/system-info")
 def get_system_info():
-    total_ram = round(psutil.virtual_memory().total / (1024**2))  # MB
     return {"ram_mb": total_ram}
 
 
-@router.post("/token", response_model=Token)
+@api.post("/token", response_model=Token)
 @limiter.limit("5/minute")
 async def login(request: Request, form_data: UserRequest):
     """Login as root user and get access token
@@ -193,21 +195,21 @@ async def login(request: Request, form_data: UserRequest):
     return Token(access_token=f"{access_token}")
 
 
-@router.get("/me", response_model=UserResponse)
+@api.get("/me", response_model=UserResponse)
 async def get_me(request: Request):
     """Get current user info"""
     current_user = await get_current_user(request)
     return current_user
 
 
-@router.post("/verify")
+@api.post("/verify")
 async def verify_token(request: Request):
     """Verify token is valid"""
     current_user = await get_current_user(request)
     return {"valid": True, "username": current_user.username}
 
 
-@router.post("/logout")
+@api.post("/logout")
 async def logout(request: Request):
     """Logout endpoint"""
     await get_current_user(request)

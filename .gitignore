@@ -21,3 +21,4 @@ test.*
 .vscode2
 .env
 Needed/
+*FRONTEND*.MD

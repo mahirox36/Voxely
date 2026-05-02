@@ -15,7 +15,6 @@ interface UseWebSocketReturn {
   socket: RefObject<WebSocketClient | null>;
   connect: () => void;
   disconnect: () => void;
-  callSignalRef: RefObject<((data: Record<string, any>) => void) | null>;
 }
 
 export function useWebSocket({}: UseWebSocketOptions): UseWebSocketReturn {
@@ -23,9 +22,6 @@ export function useWebSocket({}: UseWebSocketOptions): UseWebSocketReturn {
   const reconnectAttempts = useRef(0);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnect = useRef(true);
-  const callSignalRef = useRef<((data: Record<string, any>) => void) | null>(
-    null,
-  );
 
   const connect = () => {
     if (socket.current?.readyState === WebSocket.OPEN) return;
@@ -36,7 +32,7 @@ export function useWebSocket({}: UseWebSocketOptions): UseWebSocketReturn {
       new WebSocket(`${wsProtocol}://${baseURL}/ws?token=${token}`),
     );
 
-    const handleMessage = createMessageHandler({});
+    const handleMessage = createMessageHandler({ws});
 
     ws.onopen = () => {
       socket.current = ws;
@@ -90,5 +86,5 @@ export function useWebSocket({}: UseWebSocketOptions): UseWebSocketReturn {
     }
   };
 
-  return { socket, connect, disconnect, callSignalRef };
+  return { socket, connect, disconnect };
 }

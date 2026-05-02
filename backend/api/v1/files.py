@@ -85,7 +85,7 @@ def _safe_zip_extract(zipf: zipfile.ZipFile, dest: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@api.get("/files/get/{path:path}")
+@api.get("/get/{path:path}")
 async def get_file(request: Request, server_name: str, path: str):
     """Return the text content of a file inside the server directory."""
     await get_current_user(request)
@@ -107,7 +107,7 @@ async def get_file(request: Request, server_name: str, path: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.post("/files/write/{path:path}")
+@api.post("/write/{path:path}")
 async def write_file(request: Request, server_name: str, path: str):
     """Write (overwrite) text content to a file inside the server directory."""
     await get_current_user(request)
@@ -131,7 +131,7 @@ async def write_file(request: Request, server_name: str, path: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.post("/files/upload/{path:path}")
+@api.post("/upload/{path:path}")
 async def upload_file(
     request: Request,
     server_name: str,
@@ -164,7 +164,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.post("/files/create/{path:path}")
+@api.post("/create/{path:path}")
 async def create_file(request: Request, server_name: str, path: str):
     """Create an empty file at *path* inside the server directory."""
     await get_current_user(request)
@@ -194,7 +194,7 @@ async def create_file(request: Request, server_name: str, path: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.post("/files/create_folder/{path:path}")
+@api.post("/create_folder/{path:path}")
 async def create_folder(request: Request, server_name: str, path: str):
     """Create a new directory at *path* inside the server directory."""
     await get_current_user(request)
@@ -227,7 +227,7 @@ async def create_folder(request: Request, server_name: str, path: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.delete("/files/delete/{path:path}")
+@api.delete("/delete/{path:path}")
 async def delete_file(request: Request, server_name: str, path: str):
     """Delete a file or directory at *path* inside the server directory."""
     await get_current_user(request)
@@ -292,7 +292,7 @@ async def _zip_files_async(
     await loop.run_in_executor(ThreadPoolExecutor(), _sync_zip)
 
 
-@api.post("/files/zip")
+@api.post("/zip")
 async def zip_files(request: Request, server_name: str):
     """Compress a list of paths into a zip archive inside the server directory."""
     await get_current_user(request)
@@ -322,7 +322,7 @@ async def zip_files(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.post("/files/unzip")
+@api.post("/unzip")
 async def unzip_file(request: Request, server_name: str):
     """Extract a zip archive inside the server directory (zip-slip safe)."""
     await get_current_user(request)
@@ -357,7 +357,7 @@ async def unzip_file(request: Request, server_name: str):
 # ---------------------------------------------------------------------------
 
 
-@api.post("/files/copy")
+@api.post("/copy")
 async def copy_file(request: Request, server_name: str):
     """Copy a file from one location to another inside the server directory."""
     await get_current_user(request)
@@ -387,7 +387,7 @@ async def copy_file(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.post("/files/move")
+@api.post("/move")
 async def move_file(request: Request, server_name: str):
     """Move (rename) a file inside the server directory."""
     await get_current_user(request)
@@ -417,7 +417,7 @@ async def move_file(request: Request, server_name: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@api.get("/files/download/{path:path}")
+@api.get("/download/{path:path}")
 async def download_file(request: Request, server_name: str, path: str):
     """Stream a file from the server directory to the client."""
     await get_current_user(request)
