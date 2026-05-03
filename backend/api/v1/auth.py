@@ -18,7 +18,7 @@ from slowapi.util import get_remote_address
 load_dotenv()
 
 DATA_FILE = Path("servers/data.json")
-api = APIRouter(prefix="/auth", tags=["auth"])
+api = APIRouter()
 
 # Setup rate limiting
 limiter = Limiter(key_func=get_remote_address)

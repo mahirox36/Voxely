@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from .auth import get_current_user
 
-api = APIRouter(tags=["files"])
+api = APIRouter()
 serverService = ServerService()
 
 
