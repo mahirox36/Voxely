@@ -1,9 +1,11 @@
 import { WebSocketClient } from "./WebSocketClient";
 
-interface MessageHandlerDeps {ws: WebSocketClient;}
+interface MessageHandlerDeps {
+  ws: WebSocketClient;
+}
 
 export function createMessageHandler(deps: MessageHandlerDeps) {
-  const {ws} = deps;
+  const { ws } = deps;
 
   return function handleMessage(data: Record<string, any>) {
     switch (data.t) {
@@ -25,14 +27,17 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
         startPingLoop();
         break;
       }
-      
+
+      case "server.list.success":
+        console.log("Server list received:", data);
+        break;
+
       case "example_event":
         // Handle the example_event message type
         console.log("Received example_event:", data);
         break;
 
       default:
-        
         console.log("Unhandled WebSocket message:", data);
         break;
     }

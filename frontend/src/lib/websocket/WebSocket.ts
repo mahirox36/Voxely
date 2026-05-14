@@ -7,8 +7,6 @@ import { baseURL } from "@/utils/api";
 const MAX_RECONNECT_ATTEMPTS = 8;
 const BASE_RECONNECT_DELAY_MS = 1000;
 
-
-
 interface UseWebSocketOptions {}
 
 interface UseWebSocketReturn {
@@ -27,12 +25,14 @@ export function useWebSocket({}: UseWebSocketOptions): UseWebSocketReturn {
     if (socket.current?.readyState === WebSocket.OPEN) return;
 
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const token = localStorage.getItem("token")
+    const token = localStorage.getItem("token")?.replace(/^bearer\s+/i, "");
     const ws = new WebSocketClient(
-      new WebSocket(`${wsProtocol}://${baseURL}/ws?token=${token}`),
+      new WebSocket(
+        `${baseURL.replace(/^http/, "ws")}/websocket/ws?token=${token}`,
+      ),
     );
 
-    const handleMessage = createMessageHandler({ws});
+    const handleMessage = createMessageHandler({ ws });
 
     ws.onopen = () => {
       socket.current = ws;
@@ -52,7 +52,6 @@ export function useWebSocket({}: UseWebSocketOptions): UseWebSocketReturn {
         console.error("WebSocket max reconnect attempts reached. Giving up.");
         return;
       }
-
 
       const delay = Math.min(
         BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempts.current +

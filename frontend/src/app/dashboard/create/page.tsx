@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import AuthMiddleware from "@/components/AuthMiddleware";
 import { api } from "@/utils/api";
+import { useWebSocket } from "@/lib/websocket/WebSocket";
 
 // Server type options
 const serverTypes = [
@@ -121,6 +122,7 @@ function AnimatedDropdown({
 
 export default function CreateServer() {
   const router = useRouter();
+  const { socket, connect } = useWebSocket({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [versions, setVersions] = useState<Record<string, string[]>>({});
@@ -135,16 +137,15 @@ export default function CreateServer() {
   });
 
   useEffect(() => {
-    const fetchVersions = async () => {
-      try {
-        const data: Record<string, string[]> = await api("/servers/versions");
-        setVersions(data);
-      } catch (err) {
-        console.error("Failed to fetch versions:", err);
-      }
-    };
-
-    fetchVersions();
+    connect();
+    setVersions({
+      paper: ["1.21.1", "1.20.6", "1.20.4"],
+      vanilla: ["1.21.1", "1.20.6"],
+      fabric: ["1.21.1"],
+      forge: ["1.20.1"],
+      purpur: ["1.21.1"],
+      neoforge: ["1.21.1"],
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -162,7 +163,26 @@ export default function CreateServer() {
       data.append("port", formData.port.toString());
       data.append("maxPlayers", formData.maxPlayers.toString());
 
-      await api.post("/servers/create", data);
+      socket.current?.emit("server.create", {
+        server_data: {
+          name: formData.name,
+          type: formData.type,
+          version: formData.version,
+          minRam: formData.minRam,
+          maxRam: formData.maxRam,
+          port: formData.port,
+          maxPlayers: formData.maxPlayers,
+        },
+      });
+
+      socket.current?.once("server.create.success", () => {
+        router.push("/dashboard");
+      });
+
+      socket.current?.once("server.create.error", (event: CustomEvent) => {
+        setError(event.detail?.message || "Failed to create server");
+        setIsLoading(false);
+      });
 
       router.push("/dashboard");
     } catch (err: unknown) {
@@ -177,7 +197,7 @@ export default function CreateServer() {
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -304,7 +324,8 @@ export default function CreateServer() {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
-                      RAM (Min-Max){" - be careful, don't put more than your system have"}  
+                      RAM (Min-Max)
+                      {" - be careful, don't put more than your system have"}
                     </label>
                     <div className="flex items-center gap-2">
                       <MemoryStick className="text-purple-400" />
