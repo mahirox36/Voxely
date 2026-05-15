@@ -1,3 +1,7 @@
+from typing import List
+
+import aiohttp
+
 from modules.router import WebSocketManager, WSEventError, router
 from modules.ServerService import ServerCreationRequest, ServerService
 
@@ -102,26 +106,29 @@ async def on_server_unsubscribe(ws: WebSocketManager, server_id: str):
     await ws.emit("server.unsubscribed", {"server_id": server_id})
 
 
-# @router.on("server.versions")
-# async def get_available_versions(ws: WebSocketManager):
-#     """Get available Minecraft versions for different server types"""
+@router.on("server.versions")
+async def get_available_versions(ws: WebSocketManager):
+    """Get available Minecraft versions for different server types"""
 
-#     try:
-#         downloader = serverService.jar_downloader
-#         purpur = downloader.get_purpur_versions()
-#         purpur.reverse()
-#         forge: List[str] = list(downloader.get_forge_versions().keys())
-#         forge.reverse()
-#         # forge = {i: key for i, key in enumerate(forge_keys, start=0)}
-#         return {
-#             "vanilla": downloader.get_vanilla_versions(),
-#             "paper": downloader.get_paper_versions(),
-#             "fabric": downloader.get_fabric_versions(),
-#             "forge": forge,
-#             "neoforge": downloader.get_neoforge_versions(),
-#             "purpur": purpur,
-#         }
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=500, detail=f"Failed to fetch versions: {str(e)}"
-#         )
+    try:
+        async with aiohttp.ClientSession() as seasion:
+            downloader = serverService.jar_downloader
+            purpur = await downloader.get_purpur_versions(seasion)
+            purpur.reverse()
+            forge: List[str] = list(
+                (await downloader.get_forge_versions(seasion)).keys()
+            )
+            forge.reverse()
+            data = {
+                "vanilla": await downloader.get_vanilla_versions(seasion),
+                "paper": await downloader.get_paper_versions(seasion),
+                "fabric": await downloader.get_fabric_versions(seasion),
+                "forge": forge,
+                "neoforge": await downloader.get_neoforge_versions(seasion),
+                "purpur": purpur,
+            }
+            await ws.emit("server.versions", data)
+    except Exception as e:
+        raise WSEventError(
+            status_code=500, detail=f"Failed to fetch versions: {str(e)}"
+        )
