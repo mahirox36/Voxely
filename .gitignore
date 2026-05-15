@@ -12,6 +12,8 @@ work/
 cache/
 BuildTools.log.txt
 
+backend/bin/
+
 logs/
 data/
 .venv

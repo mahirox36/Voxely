@@ -1,36 +1,21 @@
 import axios from "axios";
 
-// Get API URL from environment variable, with fallback for development
-const getApiBaseUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  
-  // Fallback for development
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:25401/api/v1";
-  }
-  
-  // Default for production
-  return "/api/v1";
-};
+export const baseURL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:25401/v1";
 
-export const baseURL = getApiBaseUrl();
 export const api = axios.create({
   baseURL: baseURL,
-  timeout: 15000, // 15 seconds
+  timeout: 15000,
 });
 
-// Automatically attach token if available
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
-    config.headers.Authorization = token
+    config.headers.Authorization = token;
   }
   return config;
 });
 
-// Handle auth errors globally
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
@@ -39,7 +24,7 @@ api.interceptors.response.use(
       window.location.href = "/login";
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;
